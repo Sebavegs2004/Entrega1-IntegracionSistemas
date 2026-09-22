@@ -1,0 +1,123 @@
+openapi: 3.0.3
+info:
+  title: API Reservas - Clínica Veterinaria VidaAnimal
+  version: "1.0"
+servers:
+  - url: http://localhost:5000
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /v1/duenos:
+    post:
+      summary: Crear dueño de mascota
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre, telefono]
+              properties:
+                nombre: { type: string }
+                telefono: { type: string }
+                email: { type: string }
+      responses:
+        "201": { description: Dueño creado }
+        "400": { description: Datos inválidos }
+        "401": { description: No autorizado }
+    get:
+      summary: Listar dueños
+      parameters:
+        - name: nombre
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200": { description: Lista de dueños }
+        "401": { description: No autorizado }
+
+  /v1/duenos/{id}:
+    get:
+      summary: Obtener dueño por id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Dueño encontrado }
+        "404": { description: No encontrado }
+        "401": { description: No autorizado }
+
+  /v1/reservas:
+    post:
+      summary: Crear una reserva (verifica disponibilidad contra Agenda vía gRPC)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_dueno, id_veterinario, id_bloque, mascota_nombre]
+              properties:
+                id_dueno: { type: string }
+                id_veterinario: { type: string }
+                id_bloque: { type: string }
+                mascota_nombre: { type: string }
+      responses:
+        "201": { description: Reserva creada }
+        "400": { description: Datos inválidos }
+        "401": { description: No autorizado }
+        "404": { description: Dueño no existe }
+        "409": { description: Sin cupo disponible }
+        "503": { description: Agenda no responde }
+    get:
+      summary: Listar reservas
+      parameters:
+        - name: id_dueno
+          in: query
+          schema: { type: string }
+        - name: estado
+          in: query
+          schema: { type: string, enum: [activa, cancelada] }
+        - name: fecha
+          in: query
+          schema: { type: string }
+      responses:
+        "200": { description: Lista de reservas }
+        "401": { description: No autorizado }
+
+  /v1/reservas/{id}:
+    get:
+      summary: Obtener reserva por id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Reserva encontrada }
+        "404": { description: No encontrada }
+        "401": { description: No autorizado }
+    delete:
+      summary: Cancelar reserva (libera el cupo en Agenda)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Cancelada }
+        "404": { description: No encontrada }
+        "409": { description: Ya estaba cancelada }
+        "401": { description: No autorizado }
+        "503": { description: Agenda no responde }
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key

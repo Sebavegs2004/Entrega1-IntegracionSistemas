@@ -1,0 +1,36 @@
+services:
+  agenda:
+    build:
+      context: .
+      dockerfile: agenda/Dockerfile
+    container_name: vet-agenda
+    ports:
+      - "50051:50051"
+    volumes:
+      - agenda_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',50051))"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  reservas:
+    build:
+      context: .
+      dockerfile: reservas/Dockerfile
+    container_name: vet-reservas
+    ports:
+      - "5000:5000"
+    environment:
+      - AGENDA_HOST=agenda
+      - AGENDA_PORT=50051
+      - API_KEY=clave-secreta-vet-2026
+    volumes:
+      - reservas_data:/data
+    depends_on:
+      agenda:
+        condition: service_healthy
+
+volumes:
+  agenda_data:
+  reservas_data:

@@ -1,0 +1,56 @@
+syntax = "proto3";
+package agenda.v1;
+
+service AgendaService {
+  rpc ConsultarDisponibilidad (ConsultarDisponibilidadRequest) returns (DisponibilidadResponse);
+  rpc ListarBloques (ListarBloquesRequest) returns (ListarBloquesResponse);
+  rpc ReservarCupo (ReservarCupoRequest) returns (ReservarCupoResponse);
+  rpc LiberarCupo (LiberarCupoRequest) returns (LiberarCupoResponse);
+}
+
+message ConsultarDisponibilidadRequest {
+  string id_bloque = 1;
+}
+
+message DisponibilidadResponse {
+  string id_bloque = 1;
+  int32  cupos_disponibles = 2;
+  bool   disponible = 3;
+}
+
+message ListarBloquesRequest {
+  string id_veterinario = 1; // opcional, "" = todos
+  string fecha = 2;          // opcional, "" = todas
+}
+
+message ListarBloquesResponse {
+  repeated BloqueHorario bloques = 1;
+}
+
+message BloqueHorario {
+  string id = 1;
+  string id_veterinario = 2;
+  string nombre_veterinario = 3;
+  string fecha = 4;
+  string hora_inicio = 5;
+  string hora_fin = 6;
+  int32  cupos_disponibles = 7;
+}
+
+message ReservarCupoRequest {
+  string id_bloque = 1;
+}
+
+message ReservarCupoResponse {
+  bool   exito = 1;
+  string mensaje = 2;
+}
+
+message LiberarCupoRequest {
+  string id_bloque = 1;
+}
+
+message LiberarCupoResponse {
+  bool   exito = 1;
+  string mensaje = 2;
+}
