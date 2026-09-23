@@ -1,36 +1,105 @@
+# ============================================================
+# Clínica Veterinaria VidaAnimal — levantamiento completo
+#
+#   docker compose up --build
+#
+# Servicios:
+#   - mysql_agenda    : base de datos del servicio Agenda
+#   - mysql_reservas  : base de datos del servicio Reservas
+#   - agenda          : servicio interno gRPC (sin puertos al host)
+#   - reservas        : API REST + interfaz web (localhost:5000)
+# ============================================================
+name: vidaanimal
+
 services:
+
+  # ---------- Base de datos del servicio Agenda ----------
+  mysql_agenda:
+    image: mysql:8.0
+    container_name: vet-mysql-agenda
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass123
+      MYSQL_DATABASE: agenda_db
+      MYSQL_USER: agenda
+      MYSQL_PASSWORD: agenda123
+    volumes:
+      # El .sql se ejecuta la primera vez que se crea el volumen.
+      - ./sql/agenda.sql:/docker-entrypoint-initdb.d/agenda.sql:ro
+      - mysql_agenda_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -prootpass123"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # ---------- Base de datos del servicio Reservas ----------
+  mysql_reservas:
+    image: mysql:8.0
+    container_name: vet-mysql-reservas
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass123
+      MYSQL_DATABASE: reservas_db
+      MYSQL_USER: reservas
+      MYSQL_PASSWORD: reservas123
+    volumes:
+      - ./sql/reservas.sql:/docker-entrypoint-initdb.d/reservas.sql:ro
+      - mysql_reservas_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -prootpass123"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # ---------- Servicio interno Agenda (gRPC) ----------
   agenda:
     build:
       context: .
       dockerfile: agenda/Dockerfile
     container_name: vet-agenda
-    ports:
-      - "50051:50051"
-    volumes:
-      - agenda_data:/data
+    environment:
+      AGENDA_PORT: "50051"
+      DB_HOST: mysql_agenda
+      DB_USER: agenda
+      DB_PASSWORD: agenda123
+      DB_NAME: agenda_db
+    depends_on:
+      mysql_agenda:
+        condition: service_healthy
+    # Sin "ports": Agenda es un servicio interno, solo visible en la
+    # red de Docker. Reservas se comunica con él por gRPC.
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',50051))"]
+      test: ["CMD", "python", "-c", "import socket;s=socket.socket();s.settimeout(2);s.connect(('localhost',50051))"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 6
 
+  # ---------- API REST + interfaz web (Flask) ----------
   reservas:
     build:
       context: .
       dockerfile: reservas/Dockerfile
     container_name: vet-reservas
     ports:
-      - "5000:5000"
+      - "5000:5000"   # único servicio accesible desde el navegador
     environment:
-      - AGENDA_HOST=agenda
-      - AGENDA_PORT=50051
-      - API_KEY=clave-secreta-vet-2026
-    volumes:
-      - reservas_data:/data
+      AGENDA_HOST: agenda
+      AGENDA_PORT: "50051"
+      API_KEY: clave-secreta-vet-2026
+      DB_HOST: mysql_reservas
+      DB_USER: reservas
+      DB_PASSWORD: reservas123
+      DB_NAME: reservas_db
     depends_on:
+      mysql_reservas:
+        condition: service_healthy
       agenda:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:5000/v1/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
 volumes:
-  agenda_data:
-  reservas_data:
+  mysql_agenda_data:
+  mysql_reservas_data:

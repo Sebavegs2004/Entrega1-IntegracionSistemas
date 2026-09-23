@@ -1,17 +1,27 @@
+# ============================================================
+# Especificación básica (Swagger) de la API pública de Reservas.
+# El servicio interno Agenda se comunica por gRPC (agenda.proto),
+# por eso NO aparece aquí: no tiene endpoints REST.
+# ============================================================
 openapi: 3.0.3
 info:
   title: API Reservas - Clínica Veterinaria VidaAnimal
+  description: API pública para registrar dueños y reservar horas.
+    Antes de reservar, verifica el cupo contra el servicio interno
+    Agenda a través de gRPC.
   version: "1.0"
+
 servers:
   - url: http://localhost:5000
 
+# Todas las rutas exigen el header X-API-Key (autenticación básica).
 security:
   - ApiKeyAuth: []
 
 paths:
   /v1/duenos:
     post:
-      summary: Crear dueño de mascota
+      summary: Crear un dueño de mascota
       requestBody:
         required: true
         content:
@@ -20,9 +30,9 @@ paths:
               type: object
               required: [nombre, telefono]
               properties:
-                nombre: { type: string }
-                telefono: { type: string }
-                email: { type: string }
+                nombre: { type: string, example: "Juan Pérez" }
+                telefono: { type: string, example: "+56912345678" }
+                email: { type: string, example: "juan@mail.cl" }
       responses:
         "201": { description: Dueño creado }
         "400": { description: Datos inválidos }
@@ -40,32 +50,58 @@ paths:
 
   /v1/duenos/{id}:
     get:
-      summary: Obtener dueño por id
+      summary: Obtener un dueño por id
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema: { type: integer }
       responses:
         "200": { description: Dueño encontrado }
         "404": { description: No encontrado }
         "401": { description: No autorizado }
 
+  /v1/bloques:
+    get:
+      summary: Listar bloques horarios (consulta Agenda vía gRPC)
+      description: El servicio Reservas actúa de "fachada" y pide los
+        bloques al servicio gRPC Agenda para mostrarlos en la interfaz.
+      responses:
+        "200":
+          description: Lista de bloques con cupos libres
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    id_veterinario: { type: integer }
+                    nombre_veterinario: { type: string }
+                    especialidad: { type: string }
+                    fecha: { type: string, example: "2026-09-23" }
+                    hora_inicio: { type: string, example: "09:00" }
+                    hora_fin: { type: string, example: "09:30" }
+                    cupos_libres: { type: integer }
+        "401": { description: No autorizado }
+        "503": { description: Agenda no responde (servicio caído) }
+
   /v1/reservas:
     post:
-      summary: Crear una reserva (verifica disponibilidad contra Agenda vía gRPC)
+      summary: Crear una reserva (valida el cupo en Agenda vía gRPC)
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [id_dueno, id_veterinario, id_bloque, mascota_nombre]
+              required: [id_dueno, id_bloque, mascota_nombre]
               properties:
-                id_dueno: { type: string }
-                id_veterinario: { type: string }
-                id_bloque: { type: string }
-                mascota_nombre: { type: string }
+                id_dueno: { type: integer, example: 1 }
+                id_bloque: { type: integer, example: 3 }
+                mascota_nombre: { type: string, example: "Rex" }
+                motivo: { type: string, example: "Control anual" }
       responses:
         "201": { description: Reserva creada }
         "400": { description: Datos inválidos }
@@ -78,41 +114,40 @@ paths:
       parameters:
         - name: id_dueno
           in: query
-          schema: { type: string }
+          required: false
+          schema: { type: integer }
         - name: estado
           in: query
+          required: false
           schema: { type: string, enum: [activa, cancelada] }
-        - name: fecha
-          in: query
-          schema: { type: string }
       responses:
         "200": { description: Lista de reservas }
         "401": { description: No autorizado }
 
   /v1/reservas/{id}:
     get:
-      summary: Obtener reserva por id
+      summary: Obtener una reserva por id
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema: { type: integer }
       responses:
         "200": { description: Reserva encontrada }
         "404": { description: No encontrada }
         "401": { description: No autorizado }
     delete:
-      summary: Cancelar reserva (libera el cupo en Agenda)
+      summary: Cancelar una reserva (libera el cupo en Agenda)
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema: { type: integer }
       responses:
-        "204": { description: Cancelada }
+        "204": { description: Reserva cancelada }
+        "401": { description: No autorizado }
         "404": { description: No encontrada }
         "409": { description: Ya estaba cancelada }
-        "401": { description: No autorizado }
         "503": { description: Agenda no responde }
 
 components:

@@ -1,56 +1,78 @@
+// ============================================================
+// Contrato del servicio interno Agenda (gRPC)
+// Fuente única de verdad: cualquier cambio se hace aquí y se
+// regeneran los stubs de Python (Docker lo hace al construir).
+// ============================================================
 syntax = "proto3";
+
 package agenda.v1;
 
+// Servicio que administra los veterinarios y sus bloques horarios.
+// Todas las operaciones son de tipo Unary: el cliente envía un
+// mensaje y recibe una única respuesta.
 service AgendaService {
-  rpc ConsultarDisponibilidad (ConsultarDisponibilidadRequest) returns (DisponibilidadResponse);
+  // Consulta un veterinario y los cupos libres de uno de sus bloques.
+  rpc ConsultarVeterinario (ConsultarVeterinarioRequest) returns (VeterinarioResponse);
+
+  // Lista los bloques horarios disponibles, con filtros opcionales.
   rpc ListarBloques (ListarBloquesRequest) returns (ListarBloquesResponse);
+
+  // Decrementa en 1 el cupo libre de un bloque (reservar).
   rpc ReservarCupo (ReservarCupoRequest) returns (ReservarCupoResponse);
+
+  // Incrementa en 1 el cupo libre de un bloque (liberar al cancelar).
   rpc LiberarCupo (LiberarCupoRequest) returns (LiberarCupoResponse);
 }
 
-message ConsultarDisponibilidadRequest {
-  string id_bloque = 1;
+message ConsultarVeterinarioRequest {
+  int32 id_veterinario = 1;
+  int32 id_bloque = 2;        // bloque sobre el que se consultan los cupos
 }
 
-message DisponibilidadResponse {
-  string id_bloque = 1;
-  int32  cupos_disponibles = 2;
-  bool   disponible = 3;
+message VeterinarioResponse {
+  int32 id_veterinario = 1;
+  string nombre = 2;
+  string especialidad = 3;
+  int32 id_bloque = 4;
+  int32 cupos_libres = 5;
+  bool disponible = 6;        // true si quedan cupos en ese bloque
 }
 
 message ListarBloquesRequest {
-  string id_veterinario = 1; // opcional, "" = todos
-  string fecha = 2;          // opcional, "" = todas
+  int32 id_veterinario = 1;   // 0 = todos
+  string fecha = 2;           // "YYYY-MM-DD" o "" = todas
+}
+
+message BloqueHorario {
+  int32 id = 1;
+  int32 id_veterinario = 2;
+  string nombre_veterinario = 3;
+  string especialidad = 4;
+  string fecha = 5;           // "YYYY-MM-DD"
+  string hora_inicio = 6;     // "HH:MM"
+  string hora_fin = 7;        // "HH:MM"
+  int32 cupos_libres = 8;
 }
 
 message ListarBloquesResponse {
   repeated BloqueHorario bloques = 1;
 }
 
-message BloqueHorario {
-  string id = 1;
-  string id_veterinario = 2;
-  string nombre_veterinario = 3;
-  string fecha = 4;
-  string hora_inicio = 5;
-  string hora_fin = 6;
-  int32  cupos_disponibles = 7;
-}
-
 message ReservarCupoRequest {
-  string id_bloque = 1;
+  int32 id_bloque = 1;
 }
 
 message ReservarCupoResponse {
-  bool   exito = 1;
+  bool exito = 1;
   string mensaje = 2;
+  BloqueHorario bloque = 3;   // datos del bloque; se envía si hubo éxito
 }
 
 message LiberarCupoRequest {
-  string id_bloque = 1;
+  int32 id_bloque = 1;
 }
 
 message LiberarCupoResponse {
-  bool   exito = 1;
+  bool exito = 1;
   string mensaje = 2;
 }

@@ -1,20 +1,20 @@
+# Imagen del servicio Agenda (gRPC)
 FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY agenda/requirements.txt .
+# Copiamos el contrato y el código del servicio
+COPY contracts/agenda.proto contracts/agenda.proto
+COPY agenda/ .
+
+# Instalamos dependencias. grpcio-tools se usa solo para generar stubs.
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Compilar el contrato .proto dentro de la imagen (fuente única de verdad: contracts/)
-COPY contracts/agenda.proto /app/contracts/agenda.proto
-RUN mkdir -p /app/src && python -m grpc_tools.protoc -I /app/contracts \
-    --python_out=/app/src --grpc_python_out=/app/src \
-    /app/contracts/agenda.proto
+# Generamos los stubs de Python a partir del .proto:
+# agenda_pb2.py y agenda_pb2_grpc.py quedan en /app.
+RUN python -m grpc_tools.protoc -I contracts --python_out=. --grpc_python_out=. contracts/agenda.proto
 
-COPY agenda/src /app/src
-
-ENV AGENDA_DB_PATH=/data/agenda.db
-VOLUME ["/data"]
+# Puerto interno de gRPC (no se publica al host en docker-compose)
 EXPOSE 50051
 
-CMD ["python", "src/server.py"]
+CMD ["python", "server.py"]

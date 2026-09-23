@@ -26,7 +26,10 @@ if _version_not_supported:
 
 
 class AgendaServiceStub:
-    """Missing associated documentation comment in .proto file."""
+    """Servicio que administra los veterinarios y sus bloques horarios.
+    Todas las operaciones son de tipo Unary: el cliente envía un
+    mensaje y recibe una única respuesta.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -34,10 +37,10 @@ class AgendaServiceStub:
         Args:
             channel: A grpc.Channel.
         """
-        self.ConsultarDisponibilidad = channel.unary_unary(
-                '/agenda.v1.AgendaService/ConsultarDisponibilidad',
-                request_serializer=agenda__pb2.ConsultarDisponibilidadRequest.SerializeToString,
-                response_deserializer=agenda__pb2.DisponibilidadResponse.FromString,
+        self.ConsultarVeterinario = channel.unary_unary(
+                '/agenda.v1.AgendaService/ConsultarVeterinario',
+                request_serializer=agenda__pb2.ConsultarVeterinarioRequest.SerializeToString,
+                response_deserializer=agenda__pb2.VeterinarioResponse.FromString,
                 _registered_method=True)
         self.ListarBloques = channel.unary_unary(
                 '/agenda.v1.AgendaService/ListarBloques',
@@ -57,28 +60,35 @@ class AgendaServiceStub:
 
 
 class AgendaServiceServicer:
-    """Missing associated documentation comment in .proto file."""
+    """Servicio que administra los veterinarios y sus bloques horarios.
+    Todas las operaciones son de tipo Unary: el cliente envía un
+    mensaje y recibe una única respuesta.
+    """
 
-    def ConsultarDisponibilidad(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+    def ConsultarVeterinario(self, request, context):
+        """Consulta un veterinario y los cupos libres de uno de sus bloques.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ListarBloques(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Lista los bloques horarios disponibles, con filtros opcionales.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ReservarCupo(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Decrementa en 1 el cupo libre de un bloque (reservar).
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def LiberarCupo(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Incrementa en 1 el cupo libre de un bloque (liberar al cancelar).
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -86,10 +96,10 @@ class AgendaServiceServicer:
 
 def add_AgendaServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'ConsultarDisponibilidad': grpc.unary_unary_rpc_method_handler(
-                    servicer.ConsultarDisponibilidad,
-                    request_deserializer=agenda__pb2.ConsultarDisponibilidadRequest.FromString,
-                    response_serializer=agenda__pb2.DisponibilidadResponse.SerializeToString,
+            'ConsultarVeterinario': grpc.unary_unary_rpc_method_handler(
+                    servicer.ConsultarVeterinario,
+                    request_deserializer=agenda__pb2.ConsultarVeterinarioRequest.FromString,
+                    response_serializer=agenda__pb2.VeterinarioResponse.SerializeToString,
             ),
             'ListarBloques': grpc.unary_unary_rpc_method_handler(
                     servicer.ListarBloques,
@@ -115,10 +125,13 @@ def add_AgendaServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class AgendaService:
-    """Missing associated documentation comment in .proto file."""
+    """Servicio que administra los veterinarios y sus bloques horarios.
+    Todas las operaciones son de tipo Unary: el cliente envía un
+    mensaje y recibe una única respuesta.
+    """
 
     @staticmethod
-    def ConsultarDisponibilidad(request,
+    def ConsultarVeterinario(request,
             target,
             options=(),
             channel_credentials=None,
@@ -131,9 +144,9 @@ class AgendaService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/agenda.v1.AgendaService/ConsultarDisponibilidad',
-            agenda__pb2.ConsultarDisponibilidadRequest.SerializeToString,
-            agenda__pb2.DisponibilidadResponse.FromString,
+            '/agenda.v1.AgendaService/ConsultarVeterinario',
+            agenda__pb2.ConsultarVeterinarioRequest.SerializeToString,
+            agenda__pb2.VeterinarioResponse.FromString,
             options,
             channel_credentials,
             insecure,

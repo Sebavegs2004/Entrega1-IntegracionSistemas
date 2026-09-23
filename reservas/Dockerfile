@@ -1,25 +1,19 @@
+# Imagen del servicio Reservas (Flask API REST + interfaz web)
 FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY reservas/requirements.txt .
+# Copiamos los contratos (agenda.proto para generarlos + openapi.yaml para Swagger)
+COPY contracts/ contracts/
+COPY reservas/ .
+
+# Instalamos dependencias (Flask + gRPC + MySQL).
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Compilar el contrato .proto dentro de la imagen (mismo contrato que usa Agenda)
-RUN pip install --no-cache-dir grpcio-tools==1.84.0
-COPY contracts/agenda.proto /app/contracts/agenda.proto
-RUN mkdir -p /app/src && python -m grpc_tools.protoc -I /app/contracts \
-    --python_out=/app/src --grpc_python_out=/app/src \
-    /app/contracts/agenda.proto
+# Generamos los stubs de Python del cliente gRPC (agenda_pb2*.py en /app).
+RUN python -m grpc_tools.protoc -I contracts --python_out=. --grpc_python_out=. contracts/agenda.proto
 
-COPY reservas/src /app/src
-
-ENV RESERVAS_DB_PATH=/data/reservas.db
-ENV AGENDA_HOST=agenda
-ENV AGENDA_PORT=50051
-ENV API_KEY=clave-secreta-vet-2026
-VOLUME ["/data"]
+# Puerta de entrada de la API y la interfaz web.
 EXPOSE 5000
 
-WORKDIR /app/src
 CMD ["python", "app.py"]
