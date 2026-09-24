@@ -89,17 +89,26 @@ services:
       DB_USER: reservas
       DB_PASSWORD: reservas123
       DB_NAME: reservas_db
+      REDIS_HOST: redis_cache
     depends_on:
       mysql_reservas:
         condition: service_healthy
       agenda:
         condition: service_healthy
+      redis_cache:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:5000/v1/health', timeout=2)"]
       interval: 10s
       timeout: 5s
       retries: 6
 
+    # ---------- Servicio de Caché ----------
+  redis_cache:                     
+    image: redis:7-alpine
+    container_name: vet-redis
+    ports:
+      - "6379:6379"
 volumes:
   mysql_agenda_data:
   mysql_reservas_data:

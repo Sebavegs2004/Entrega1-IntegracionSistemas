@@ -10,12 +10,22 @@ import os
 from datetime import date, datetime
 from functools import wraps
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, json, jsonify, render_template, request, send_file
 
 import agenda_client   # nuestro cliente gRPC hacia Agenda
 from db import get_conn, get_dict_cursor
 
+import redis
+
 app = Flask(__name__)
+
+# Configuración del cliente Redis
+redis_client = redis.Redis(
+    host=os.environ.get("REDIS_HOST", "localhost"), 
+    port=6379, 
+    db=0, 
+    decode_responses=True
+)
 
 # ============================================================
 # Autenticación con API Key (header X-API-Key)
@@ -160,12 +170,32 @@ def obtener_dueno(id_dueno):
 def listar_bloques():
     """Pide la lista de bloques a Agenda vía gRPC y la devuelve como JSON.
     Si Agenda está caída respondemos 503 (Servicio no disponible)."""
+    
+    # 1. Intentar obtener la respuesta directamente desde Redis
+    try:
+        bloques_cacheados = redis_client.get("cache:bloques")
+        if bloques_cacheados:
+            # Si hay caché, transformamos el string JSON de vuelta a objeto y lo enviamos
+            return jsonify(json.loads(bloques_cacheados)), 200
+    except redis.RedisError as e:
+        print(f"Error de conexión con Redis al leer: {e}")
+        # Si Redis falla, no detenemos la app; pasamos de largo a consultar gRPC.
+
+    # 2. Si no hay caché, realizamos la consulta original vía gRPC
     try:
         bloques = agenda_client.listar_bloques()
     except agenda_client.AgendaNoDisponibleError:
         return jsonify({"error": "AGENDA_NO_DISPONIBLE",
                         "mensaje": "El servicio de Agenda no está disponible. "
                                    "Intenta de nuevo en un momento."}), 503
+    
+    # 3. Guardar la respuesta fresca en Redis antes de enviarla al usuario
+    try:
+        # Guardamos la lista serializada como JSON y le damos un tiempo de expiración (ej. 60 segundos)
+        redis_client.setex("cache:bloques", 60, json.dumps(bloques))
+    except redis.RedisError as e:
+        print(f"Error de conexión con Redis al guardar: {e}")
+
     return jsonify(bloques), 200
 
 
@@ -175,6 +205,19 @@ def listar_bloques():
 @app.post("/v1/reservas")
 @requiere_api_key
 def crear_reserva():
+    # === O2: Verificar Idempotencia ===
+    # Revisamos si el cliente envió la cabecera con una clave única
+    idempotency_key = request.headers.get("Idempotency-Key")
+    if idempotency_key:
+        try:
+            respuesta_cacheada = redis_client.get(f"idemp:reserva:{idempotency_key}")
+            if respuesta_cacheada:
+                # Si la petición ya fue procesada, devolvemos el registro guardado sin duplicarlo
+                return jsonify(json.loads(respuesta_cacheada)), 200
+        except redis.RedisError as e:
+            print(f"Error de Redis al leer idempotencia: {e}")
+
+    # Lógica original de lectura de datos
     datos = request.get_json(silent=True) or {}
     id_dueno = datos.get("id_dueno")
     id_bloque = datos.get("id_bloque")
@@ -197,8 +240,7 @@ def crear_reserva():
             return jsonify({"error": "DUENO_NO_EXISTE",
                             "mensaje": "El dueño indicado no existe"}), 404
 
-        # 2) Pedimos el cupo a Agenda (gRPC). Este es el punto de
-        #    integración: si Agenda está caída -> 503 y NO insertamos nada.
+        # 2) Pedimos el cupo a Agenda (gRPC).
         try:
             resultado = agenda_client.reservar_cupo(id_bloque)
         except agenda_client.AgendaNoDisponibleError:
@@ -210,9 +252,7 @@ def crear_reserva():
             return jsonify({"error": "SIN_CUPO",
                             "mensaje": resultado["mensaje"]}), 409
 
-        # 3) Si todo bien, guardamos la reserva. Guardamos también una
-        #    COPIA de los datos de la cita (vienen en la respuesta de
-        #    Agenda) para mostrarla en la UI sin depender de Agenda.
+        # 3) Si todo bien, guardamos la reserva.
         bloque = resultado["bloque"]
         cur.execute(
             """INSERT INTO reservas
@@ -225,9 +265,28 @@ def crear_reserva():
 
         cur.execute("SELECT * FROM reservas WHERE id_reserva = LAST_INSERT_ID()")
         reserva = cur.fetchone()
+        
+        # Serializamos los datos de la reserva aquí para poder guardarlos en Redis
+        reserva_serializada = serializar([reserva])[0]
+
+        try:
+            # === O1: Invalidación de Caché ===
+            # Borramos la caché de bloques porque acabamos de ocupar un cupo.
+            # La próxima vez que alguien entre a /v1/bloques, se consultará a la Agenda.
+            redis_client.delete("cache:bloques")
+
+            # === O2: Guardar respuesta para Idempotencia ===
+            # Si se envió la clave, guardamos la respuesta exitosa por 24 horas (86400 segs)
+            if idempotency_key:
+                redis_client.setex(f"idemp:reserva:{idempotency_key}", 86400, json.dumps(reserva_serializada))
+                
+        except redis.RedisError as e:
+            print(f"Error interno con Redis tras crear reserva: {e}")
+
     finally:
         conn.close()
-    return jsonify(serializar([reserva])[0]), 201
+        
+    return jsonify(reserva_serializada), 201
 
 
 @app.get("/v1/reservas")
@@ -267,10 +326,30 @@ def obtener_reserva(id_reserva):
         reserva = cur.fetchone()
     finally:
         conn.close()
+        
     if reserva is None:
         return jsonify({"error": "NO_ENCONTRADA",
                         "mensaje": "La reserva no existe"}), 404
-    return jsonify(serializar([reserva])[0]), 200
+                        
+    # Serializamos la respuesta
+    reserva_serializada = serializar([reserva])[0]
+
+    # === O3: Inyección de enlaces HATEOAS ===
+    enlaces = {
+        "self": f"/v1/reservas/{id_reserva}",
+        "dueno": f"/v1/duenos/{reserva_serializada['id_dueno']}"
+    }
+    
+    # Si la reserva sigue activa, le sugerimos al cliente que puede cancelarla
+    if reserva_serializada.get("estado") != "cancelada":
+        enlaces["cancelar"] = {
+            "href": f"/v1/reservas/{id_reserva}",
+            "metodo": "DELETE"
+        }
+        
+    reserva_serializada["_links"] = enlaces
+
+    return jsonify(reserva_serializada), 200
 
 
 @app.delete("/v1/reservas/<int:id_reserva>")
@@ -289,8 +368,7 @@ def cancelar_reserva(id_reserva):
             return jsonify({"error": "YA_CANCELADA",
                             "mensaje": "La reserva ya estaba cancelada"}), 409
 
-        # Liberamos el cupo en Agenda (gRPC). Si discutible soltar el
-        # cupo primero o marcar después; en este MVP basta con esto.
+        # Liberamos el cupo en Agenda (gRPC).
         try:
             agenda_client.liberar_cupo(reserva["id_bloque"])
         except agenda_client.AgendaNoDisponibleError:
@@ -303,6 +381,14 @@ def cancelar_reserva(id_reserva):
         conn.commit()
     finally:
         conn.close()
+        
+    # === O1: Invalidación de Caché (Protegida) ===
+    try:
+        # IMPORTANTE: Usar la misma clave exacta que en listar_bloques()
+        redis_client.delete("cache:bloques")
+    except redis.RedisError as e:
+        print(f"Error de conexión con Redis al invalidar caché: {e}")
+
     return "", 204
 
 
