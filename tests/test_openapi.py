@@ -18,13 +18,12 @@ from conftest import obtener_schema, validar_contra_schema, validar_spec_openapi
 
 
 @pytest.fixture(scope="session")
-def session_dueno(client):
+def session_dueno(crea):
     """Un dueño creado en la base de Reservas, reutilizable en el suite."""
-    r = client.llamar("POST", "/v1/duenos", json={
+    r = crea.dueno({
         "nombre": "Dueño de pruebas",
         "telefono": "+56900000001",
     })
-    assert r.status_code == 201
     return r.json()["id_dueno"]
 
 
@@ -140,10 +139,9 @@ def test_cancelar_reserva_404(client, spec):
 # ------------------------------------------------------------
 # 4) Cuerpos de éxito contra sus schemas
 # ------------------------------------------------------------
-def test_crear_dueno_201(client, spec):
-    r = client.llamar("POST", "/v1/duenos", json={
+def test_crear_dueno_201(crea, spec):
+    r = crea.dueno({
         "nombre": "Juan Pérez", "telefono": "+56911112222", "email": None})
-    assert r.status_code == 201
     validar_contra_schema(
         r.json(), obtener_schema(spec, "/v1/duenos", "post", "201"), spec)
 
@@ -180,13 +178,13 @@ def test_listar_reservas_200(client, spec):
 # ------------------------------------------------------------
 # 5) Flujo end-to-end con verificación del cupo en Agenda
 # ------------------------------------------------------------
-def test_flujo_reservar_listar_cancelar(client, spec, session_dueno):
+def test_flujo_reservar_listar_cancelar(crea, client, spec, session_dueno):
     bloques = client.llamar("GET", "/v1/bloques").json()
     bloque = next(b for b in bloques if b["cupos_libres"] > 0)
     cupo_antes = bloque["cupos_libres"]
 
     # Crear la reserva
-    r = client.llamar("POST", "/v1/reservas", json={
+    r = crea.reserva({
         "id_dueno": session_dueno,
         "id_bloque": bloque["id"],
         "mascota_nombre": "Rex",
@@ -228,3 +226,58 @@ def test_flujo_reservar_listar_cancelar(client, spec, session_dueno):
     assert rc2.status_code == 409
     validar_contra_schema(
         rc2.json(), obtener_schema(spec, "/v1/reservas/{id}", "delete", "409"), spec)
+
+
+# ------------------------------------------------------------
+# 6) Degradada: Agenda caída -> 503 AGENDA_NO_DISPONIBLE
+#    Contra la instancia reservas-degradada (misma imagen, misma BD,
+#    pero AGENDA_HOST inexistente). El contrato declara "503" en
+#    GET /v1/bloques, POST /v1/reservas y DELETE /v1/reservas/{id}.
+# ------------------------------------------------------------
+def test_agenda_caida_al_listar_bloques_503(client_degradada, spec):
+    r = client_degradada.llamar("GET", "/v1/bloques")
+    assert r.status_code == 503
+    validar_contra_schema(
+        r.json(), obtener_schema(spec, "/v1/bloques", "get", "503"), spec)
+
+
+def test_agenda_caida_al_reservar_503_y_no_inserta(client, client_degradada,
+                                                   spec, session_dueno):
+    ids_antes = {x["id_reserva"]
+                 for x in client.llamar("GET", "/v1/reservas").json()}
+    r = client_degradada.llamar("POST", "/v1/reservas", json={
+        "id_dueno": session_dueno, "id_bloque": 1, "mascota_nombre": "Rex"})
+    assert r.status_code == 503
+    validar_contra_schema(
+        r.json(), obtener_schema(spec, "/v1/reservas", "post", "503"), spec)
+    ids_despues = {x["id_reserva"]
+                   for x in client.llamar("GET", "/v1/reservas").json()}
+    assert ids_despues == ids_antes   # el 503 no inserta ninguna fila
+
+
+def test_agenda_caida_al_cancelar_503(crea, client, client_degradada,
+                                      spec, session_dueno):
+    bloque = _bloque_con_cupo(client)
+    r = crea.reserva({
+        "id_dueno": session_dueno,
+        "id_bloque": bloque["id"],
+        "mascota_nombre": "Rex",
+    })
+    assert r.status_code == 201
+    id_reserva = r.json()["id_reserva"]
+
+    # Agenda no responde -> 503 y la reserva NO se cancela
+    r = client_degradada.llamar("DELETE", f"/v1/reservas/{id_reserva}")
+    assert r.status_code == 503
+    validar_contra_schema(
+        r.json(), obtener_schema(spec, "/v1/reservas/{id}", "delete", "503"), spec)
+
+    # La cancelación real (instancia normal) sí libera el cupo en Agenda
+    rc = client.llamar("DELETE", f"/v1/reservas/{id_reserva}")
+    assert rc.status_code == 204
+
+
+def _bloque_con_cupo(client):
+    bloques = client.llamar("GET", "/v1/bloques")
+    assert bloques.status_code == 200
+    return next(b for b in bloques.json() if b["cupos_libres"] > 0)

@@ -5,3 +5,4 @@ jsonschema>=4.20
 openapi-spec-validator>=0.7.1
 grpcio>=1.60
 grpcio-tools>=1.60
+mysql-connector-python>=8.4

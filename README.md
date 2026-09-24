@@ -45,6 +45,11 @@ Verifican automáticamente que la implementación cumple **ambos contratos**:
     (`jsonschema`, con `$ref` internos resueltos).
   - Flujo E2E: crear dueño → listar bloques (desde Agenda vía gRPC) → reservar →
     verificar que el cupo bajó → cancelar (204) → verificar que el cupo volvió.
+  - Modo **degradado** (Agenda caída): contra la instancia `reservas-degradada`
+    (misma imagen, misma BD, pero `AGENDA_HOST` inexistente) se verifica el
+    `503 AGENDA_NO_DISPONIBLE` declarado en `GET /v1/bloques`,
+    `POST /v1/reservas` (y que **no inserta** la reserva) y
+    `DELETE /v1/reservas/{id}`.
 - `tests/test_proto.py` — contrato **gRPC**:
   - `agenda.proto` compila y su descriptor expone exactamente los 4 RPC.
   - Los 4 métodos responden como dicta el contrato (incluye `NOT_FOUND`,
@@ -65,9 +70,9 @@ Solo los tests REST desde el host (requiere las dependencias de
 API_BASE=http://localhost:5000 pytest tests/test_openapi.py
 ```
 
-> El caso 503 (Agenda caída) no forma parte del suite automático: forzarlo
-> requiere apagar el servicio Agenda, y en una pila sana no ocurre.
-> `tests/` y el servicio de compose permiten revisarlo manualmente si se desea.
+> El caso 503 (Agenda caída) está automatizado: el suite levanta la instancia
+> `reservas-degradada` (profile `tests`), que apunta a una Agenda inexistente,
+> y verifica el comportamiento degradado sin tocar la pila sana.
 
 ## Segundo cliente gRPC (.NET) — interoperabilidad
 

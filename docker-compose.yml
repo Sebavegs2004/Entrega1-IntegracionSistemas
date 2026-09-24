@@ -115,13 +115,48 @@ services:
       AGENDA_PORT: "50051"
       API_BASE: http://reservas:5000
       API_KEY: clave-secreta-vet-2026
+      DB_HOST: mysql_reservas
+      DB_USER: reservas
+      DB_PASSWORD: reservas123
+      DB_NAME: reservas_db
+      DEGRADADA_BASE: http://reservas-degradada:5000
     depends_on:
       mysql_reservas:
         condition: service_healthy
       reservas:
         condition: service_healthy
+      reservas-degradada:
+        condition: service_healthy
       agenda:
         condition: service_healthy
+
+# ---------- Instancia "degradada" de Reservas (solo para tests 503) ----------
+  # Misma imagen y Dockerfile que reservas, PERO apunta a una Agenda
+  # inexistente: la API responde 503 AGENDA_NO_DISPONIBLE. Comparte la
+  # base de datos de reservas. Se levanta solo con el profile "tests".
+  reservas-degradada:
+    build:
+      context: .
+      dockerfile: reservas/Dockerfile
+    container_name: reservas-degradada
+    profiles: ["tests"]
+    environment:
+      AGENDA_HOST: agenda-inexistente   # la diferencia clave
+      AGENDA_PORT: "50051"
+      API_KEY: clave-secreta-vet-2026
+      DB_HOST: mysql_reservas
+      DB_USER: reservas
+      DB_PASSWORD: reservas123
+      DB_NAME: reservas_db
+    depends_on:
+      mysql_reservas:
+        condition: service_healthy
+    # Sin "ports": solo es visible desde la red (tests la llaman por nombre).
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:5000/v1/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
 # ---------- Segundo cliente gRPC (.NET) ----------
   # Demostración de interoperabilidad: el mismo agenda.proto compilado
