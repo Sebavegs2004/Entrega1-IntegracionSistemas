@@ -11,6 +11,8 @@ app = Flask(__name__)
 
 API_KEY = os.environ.get("API_KEY", "clave-secreta-vet-2026")
 
+SERVICIO = "reservas"
+
 
 # ---------- Auth (T6) ----------
 def requiere_api_key(f):
@@ -26,7 +28,7 @@ def requiere_api_key(f):
 
 
 # ---------- Duenos ----------
-@app.route("/v1/duenos", methods=["POST"])
+@app.post("/v1/duenos")
 @requiere_api_key
 def crear_dueno():
     data = request.get_json(silent=True) or {}
@@ -49,7 +51,7 @@ def crear_dueno():
     return jsonify({"id": dueno_id, "nombre": nombre, "telefono": telefono, "email": email}), 201
 
 
-@app.route("/v1/duenos/<id_dueno>", methods=["GET"])
+@app.get("/v1/duenos/<id_dueno>")
 @requiere_api_key
 def obtener_dueno(id_dueno):
     conn = get_conn()
@@ -60,7 +62,7 @@ def obtener_dueno(id_dueno):
     return jsonify(dict(row)), 200
 
 
-@app.route("/v1/duenos", methods=["GET"])
+@app.get("/v1/duenos")
 @requiere_api_key
 def listar_duenos():
     nombre = request.args.get("nombre")
@@ -74,7 +76,7 @@ def listar_duenos():
 
 
 # ---------- Reservas ----------
-@app.route("/v1/reservas", methods=["POST"])
+@app.post("/v1/reservas")
 @requiere_api_key
 def crear_reserva():
     data = request.get_json(silent=True) or {}
@@ -122,7 +124,7 @@ def crear_reserva():
     return jsonify(dict(row)), 201
 
 
-@app.route("/v1/reservas/<id_reserva>", methods=["GET"])
+@app.get("/v1/reservas/<id_reserva>")
 @requiere_api_key
 def obtener_reserva(id_reserva):
     conn = get_conn()
@@ -133,7 +135,7 @@ def obtener_reserva(id_reserva):
     return jsonify(dict(row)), 200
 
 
-@app.route("/v1/reservas", methods=["GET"])
+@app.get("/v1/reservas")
 @requiere_api_key
 def listar_reservas():
     id_dueno = request.args.get("id_dueno")
@@ -154,7 +156,7 @@ def listar_reservas():
     return jsonify([dict(r) for r in rows]), 200
 
 
-@app.route("/v1/reservas/<id_reserva>", methods=["DELETE"])
+@app.delete("/v1/reservas/<id_reserva>")
 @requiere_api_key
 def cancelar_reserva(id_reserva):
     conn = get_conn()
@@ -181,9 +183,59 @@ def cancelar_reserva(id_reserva):
     return "", 204
 
 
-@app.route("/v1/health", methods=["GET"])
+@app.get("/v1/health")
 def health():
     return jsonify({"status": "ok"}), 200
+
+
+# ---------- Error handlers ----------
+@app.errorhandler(400)
+def peticion_invalida(e):
+    return jsonify({"error": "peticion_invalida", "detalle": str(e.description),
+                    "servicio": SERVICIO}), 400
+
+
+@app.errorhandler(401)
+def no_autorizado(e):
+    return jsonify({"error": "no_autorizado", "detalle": str(e.description),
+                    "servicio": SERVICIO}), 401
+
+
+@app.errorhandler(404)
+def no_encontrado(e):
+    return jsonify({"error": "no_encontrado", "detalle": str(e.description),
+                    "servicio": SERVICIO}), 404
+
+
+@app.errorhandler(405)
+def metodo_no_permitido(e):
+    return jsonify({"error": "metodo_no_permitido", "detalle": str(e.description),
+                    "servicio": SERVICIO}), 405
+
+
+@app.errorhandler(409)
+def conflicto(e):
+    return jsonify({"error": "conflicto", "detalle": str(e.description),
+                    "servicio": SERVICIO}), 409
+
+
+@app.errorhandler(422)
+def entidad_no_procesable(e):
+    return jsonify({"error": "entidad_no_procesable", "detalle": str(e.description),
+                    "servicio": SERVICIO}), 422
+
+
+@app.errorhandler(503)
+def servicio_no_disponible(e):
+    return jsonify({"error": "servicio_no_disponible", "detalle": str(e.description),
+                    "servicio": SERVICIO}), 503
+
+
+@app.errorhandler(500)
+def error_interno(e):
+    detalle = str(e.description) if hasattr(e, "description") else str(e)
+    return jsonify({"error": "error_interno", "detalle": detalle,
+                    "servicio": SERVICIO}), 500
 
 
 if __name__ == "__main__":
