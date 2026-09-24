@@ -41,10 +41,6 @@ paths:
       responses:
         "201":
           description: Dueño creado
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Dueno"
         "400":
           description: Faltan nombre y/o teléfono
           content:
@@ -67,12 +63,6 @@ paths:
       responses:
         "200":
           description: Lista de dueños
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Dueno"
         "401":
           description: Falta o no coincide la API Key
           content:
@@ -91,10 +81,6 @@ paths:
       responses:
         "200":
           description: Dueño encontrado
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Dueno"
         "401":
           description: Falta o no coincide la API Key
           content:
@@ -122,24 +108,14 @@ paths:
                 type: array
                 items:
                   type: object
-                  required: [id, id_veterinario, nombre_veterinario,
-                             especialidad, fecha, hora_inicio, hora_fin,
-                             cupos_libres]
-                  additionalProperties: false
                   properties:
                     id: { type: integer }
                     id_veterinario: { type: integer }
                     nombre_veterinario: { type: string }
                     especialidad: { type: string }
-                    fecha: { type: string, format: date, example: "2026-09-23" }
-                    hora_inicio:
-                      type: string
-                      pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
-                      example: "09:00"
-                    hora_fin:
-                      type: string
-                      pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
-                      example: "09:30"
+                    fecha: { type: string, example: "2026-09-23" }
+                    hora_inicio: { type: string, example: "09:00" }
+                    hora_fin: { type: string, example: "09:30" }
                     cupos_libres: { type: integer }
         "401":
           description: Falta o no coincide la API Key
@@ -172,10 +148,6 @@ paths:
       responses:
         "201":
           description: Reserva creada
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Reserva"
         "400":
           description: Faltan campos obligatorios
           content:
@@ -220,12 +192,6 @@ paths:
       responses:
         "200":
           description: Lista de reservas
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Reserva"
         "401":
           description: Falta o no coincide la API Key
           content:
@@ -244,10 +210,6 @@ paths:
       responses:
         "200":
           description: Reserva encontrada
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Reserva"
         "401":
           description: Falta o no coincide la API Key
           content:
@@ -295,26 +257,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorAgendaNoDisponible"
 
-  /v1/health:
-    get:
-      summary: Health check (liveness)
-      description: Endpoint operativo usado por docker-compose
-        para saber si la API está arriba. No requiere API Key.
-      security: []
-      responses:
-        "200":
-          description: API operativa
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [status]
-                additionalProperties: false
-                properties:
-                  status:
-                    type: string
-                    example: ok
-
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -322,45 +264,6 @@ components:
       in: header
       name: X-API-Key
   schemas:
-    # Cuerpos de éxito.
-    Dueno:
-      type: object
-      required: [id_dueno, nombre, telefono]
-      additionalProperties: false
-      properties:
-        id_dueno: { type: integer, minimum: 1 }
-        nombre: { type: string, example: "Juan Pérez" }
-        telefono: { type: string, example: "+56912345678" }
-        email:
-          type: string
-          nullable: true
-          example: "juan@mail.cl"
-
-    Reserva:
-      type: object
-      required: [id_reserva, id_dueno, id_bloque, nombre_veterinario,
-                 fecha, hora_inicio, mascota_nombre, estado, creada_en]
-      additionalProperties: false
-      properties:
-        id_reserva: { type: integer, minimum: 1 }
-        id_dueno: { type: integer, minimum: 1 }
-        id_bloque: { type: integer, minimum: 1 }
-        nombre_veterinario: { type: string, example: "Dra. Carmen Rojas" }
-        fecha: { type: string, format: date, example: "2026-09-23" }
-        hora_inicio:
-          type: string
-          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
-          example: "09:00"
-        mascota_nombre: { type: string, example: "Rex" }
-        motivo:
-          type: string
-          nullable: true
-          example: "Control anual"
-        estado:
-          type: string
-          enum: [activa, cancelada]
-        creada_en: { type: string, example: "2026-09-23 12:34:56" }
-
     # Un schema por cada código de error de la API.
     ErrorNoAutorizado:
       type: object
