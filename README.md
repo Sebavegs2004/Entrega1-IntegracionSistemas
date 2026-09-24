@@ -85,7 +85,7 @@ sistema real se usaría algo más robusto, pero cumple el requisito.)
 **¿Cómo se maneja la caída de Agenda?** El cliente gRPC usa un timeout
 de 3 segundos. Si Agenda no responde, se lanza `AgendaNoDisponibleError`
 y la API responde **HTTP 503** con un JSON amigable:
-`{"error": "AGENDA_NO_DISPONIBLE", "mensaje": "..."}`. La reserva NO se
+`{"error": "AGENDA_NO_DISPONIBLE", "detalle": "..."}`. La reserva NO se
 inserta: el cupo primero se asegura en Agenda y recién después se guarda.
 
 **¿Por qué "copias" de datos en Reservas?** En la tabla `reservas` se

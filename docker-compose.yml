@@ -16,7 +16,7 @@ services:
   # ---------- Base de datos del servicio Agenda ----------
   mysql_agenda:
     image: mysql:8.0
-    container_name: vet-mysql-agenda
+    container_name: db-agenda
     environment:
       MYSQL_ROOT_PASSWORD: rootpass123
       MYSQL_DATABASE: agenda_db
@@ -35,7 +35,7 @@ services:
   # ---------- Base de datos del servicio Reservas ----------
   mysql_reservas:
     image: mysql:8.0
-    container_name: vet-mysql-reservas
+    container_name: db-reservas
     environment:
       MYSQL_ROOT_PASSWORD: rootpass123
       MYSQL_DATABASE: reservas_db
@@ -55,7 +55,7 @@ services:
     build:
       context: .
       dockerfile: agenda/Dockerfile
-    container_name: vet-agenda
+    container_name: agenda
     environment:
       AGENDA_PORT: "50051"
       DB_HOST: mysql_agenda
@@ -78,7 +78,7 @@ services:
     build:
       context: .
       dockerfile: reservas/Dockerfile
-    container_name: vet-reservas
+    container_name: reservas
     ports:
       - "5000:5000"   # único servicio accesible desde el navegador
     environment:

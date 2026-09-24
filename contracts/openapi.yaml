@@ -2,6 +2,11 @@
 # Especificación básica (Swagger) de la API pública de Reservas.
 # El servicio interno Agenda se comunica por gRPC (agenda.proto),
 # por eso NO aparece aquí: no tiene endpoints REST.
+#
+# Hay un schema por cada código de error (ErrorNoEncontrado,
+# ErrorSinCupo, ...). Cada response refiere el schema del error
+# que esa ruta devuelve; así el 404 no repite el mismo cuerpo en
+# todas las rutas: solo cambia el $ref.
 # ============================================================
 openapi: 3.0.3
 info:
@@ -34,9 +39,20 @@ paths:
                 telefono: { type: string, example: "+56912345678" }
                 email: { type: string, example: "juan@mail.cl" }
       responses:
-        "201": { description: Dueño creado }
-        "400": { description: Datos inválidos }
-        "401": { description: No autorizado }
+        "201":
+          description: Dueño creado
+        "400":
+          description: Faltan nombre y/o teléfono
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDatosInvalidos"
+        "401":
+          description: Falta o no coincide la API Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorNoAutorizado"
     get:
       summary: Listar dueños
       parameters:
@@ -45,8 +61,14 @@ paths:
           required: false
           schema: { type: string }
       responses:
-        "200": { description: Lista de dueños }
-        "401": { description: No autorizado }
+        "200":
+          description: Lista de dueños
+        "401":
+          description: Falta o no coincide la API Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorNoAutorizado"
 
   /v1/duenos/{id}:
     get:
@@ -55,11 +77,22 @@ paths:
         - name: id
           in: path
           required: true
-          schema: { type: integer }
+          schema: { type: integer, minimum: 1 }
       responses:
-        "200": { description: Dueño encontrado }
-        "404": { description: No encontrado }
-        "401": { description: No autorizado }
+        "200":
+          description: Dueño encontrado
+        "401":
+          description: Falta o no coincide la API Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorNoAutorizado"
+        "404":
+          description: El dueño no existe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorNoEncontrado"
 
   /v1/bloques:
     get:
@@ -84,8 +117,18 @@ paths:
                     hora_inicio: { type: string, example: "09:00" }
                     hora_fin: { type: string, example: "09:30" }
                     cupos_libres: { type: integer }
-        "401": { description: No autorizado }
-        "503": { description: Agenda no responde (servicio caído) }
+        "401":
+          description: Falta o no coincide la API Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorNoAutorizado"
+        "503":
+          description: Agenda no responde (servicio caído)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorAgendaNoDisponible"
 
   /v1/reservas:
     post:
@@ -103,12 +146,38 @@ paths:
                 mascota_nombre: { type: string, example: "Rex" }
                 motivo: { type: string, example: "Control anual" }
       responses:
-        "201": { description: Reserva creada }
-        "400": { description: Datos inválidos }
-        "401": { description: No autorizado }
-        "404": { description: Dueño no existe }
-        "409": { description: Sin cupo disponible }
-        "503": { description: Agenda no responde }
+        "201":
+          description: Reserva creada
+        "400":
+          description: Faltan campos obligatorios
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDatosInvalidos"
+        "401":
+          description: Falta o no coincide la API Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorNoAutorizado"
+        "404":
+          description: El dueño indicado no existe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDuenoNoExiste"
+        "409":
+          description: No queda cupo en el bloque
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorSinCupo"
+        "503":
+          description: Agenda no responde (servicio caído)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorAgendaNoDisponible"
     get:
       summary: Listar reservas
       parameters:
@@ -121,8 +190,14 @@ paths:
           required: false
           schema: { type: string, enum: [activa, cancelada] }
       responses:
-        "200": { description: Lista de reservas }
-        "401": { description: No autorizado }
+        "200":
+          description: Lista de reservas
+        "401":
+          description: Falta o no coincide la API Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorNoAutorizado"
 
   /v1/reservas/{id}:
     get:
@@ -131,24 +206,56 @@ paths:
         - name: id
           in: path
           required: true
-          schema: { type: integer }
+          schema: { type: integer, minimum: 1 }
       responses:
-        "200": { description: Reserva encontrada }
-        "404": { description: No encontrada }
-        "401": { description: No autorizado }
+        "200":
+          description: Reserva encontrada
+        "401":
+          description: Falta o no coincide la API Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorNoAutorizado"
+        "404":
+          description: La reserva no existe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorNoEncontrada"
     delete:
       summary: Cancelar una reserva (libera el cupo en Agenda)
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: integer }
+          schema: { type: integer, minimum: 1 }
       responses:
-        "204": { description: Reserva cancelada }
-        "401": { description: No autorizado }
-        "404": { description: No encontrada }
-        "409": { description: Ya estaba cancelada }
-        "503": { description: Agenda no responde }
+        "204":
+          description: Reserva cancelada (sin cuerpo)
+        "401":
+          description: Falta o no coincide la API Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorNoAutorizado"
+        "404":
+          description: La reserva no existe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorNoEncontrada"
+        "409":
+          description: La reserva ya estaba cancelada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorYaCancelada"
+        "503":
+          description: Agenda no responde (no se pudo liberar el cupo)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorAgendaNoDisponible"
 
 components:
   securitySchemes:
@@ -156,3 +263,60 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
+  schemas:
+    # Un schema por cada código de error de la API.
+    ErrorNoAutorizado:
+      type: object
+      required: [error, detalle]
+      properties:
+        error: { type: string, example: NO_AUTORIZADO }
+        detalle: { type: string, example: Falta el header X-API-Key }
+
+    ErrorDatosInvalidos:
+      type: object
+      required: [error, detalle]
+      properties:
+        error: { type: string, example: DATOS_INVALIDOS }
+        detalle: { type: string, example: "'nombre' y 'telefono' son obligatorios" }
+
+    ErrorNoEncontrado:
+      type: object
+      required: [error, detalle]
+      properties:
+        error: { type: string, example: NO_ENCONTRADO }
+        detalle: { type: string, example: El dueño no existe }
+
+    ErrorDuenoNoExiste:
+      type: object
+      required: [error, detalle]
+      properties:
+        error: { type: string, example: DUENO_NO_EXISTE }
+        detalle: { type: string, example: El dueño indicado no existe }
+
+    ErrorNoEncontrada:
+      type: object
+      required: [error, detalle]
+      properties:
+        error: { type: string, example: NO_ENCONTRADA }
+        detalle: { type: string, example: La reserva no existe }
+
+    ErrorSinCupo:
+      type: object
+      required: [error, detalle]
+      properties:
+        error: { type: string, example: SIN_CUPO }
+        detalle: { type: string, example: No quedan cupos en ese bloque }
+
+    ErrorYaCancelada:
+      type: object
+      required: [error, detalle]
+      properties:
+        error: { type: string, example: YA_CANCELADA }
+        detalle: { type: string, example: La reserva ya estaba cancelada }
+
+    ErrorAgendaNoDisponible:
+      type: object
+      required: [error, detalle]
+      properties:
+        error: { type: string, example: AGENDA_NO_DISPONIBLE }
+        detalle: { type: string, example: El servicio de Agenda no está disponible }

@@ -25,11 +25,11 @@ async function api(path, opciones = {}) {
   };
   const res = await fetch(`/v1${path}`, config);
   if (!res.ok) {
-    // Si el servidor responde JSON con "mensaje", lo mostramos tal cual.
+    // Si el servidor responde JSON con "detalle", lo mostramos tal cual.
     let msg = `Error ${res.status}`;
     try {
       const datos = await res.json();
-      if (datos.mensaje) msg = datos.mensaje;
+      if (datos.detalle) msg = datos.detalle;
     } catch (_) { /* sin JSON: dejamos el mensaje genérico */ }
     throw new Error(msg);
   }

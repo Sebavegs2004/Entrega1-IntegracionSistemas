@@ -33,12 +33,48 @@ def requiere_api_key(f):
         clave = request.headers.get("X-API-Key")
         if not clave:
             return jsonify({"error": "NO_AUTORIZADO",
-                            "mensaje": "Falta el header X-API-Key"}), 401
+                            "detalle": "Falta el header X-API-Key"}), 401
         if clave != API_KEY:
             return jsonify({"error": "NO_AUTORIZADO",
-                            "mensaje": "API Key inválida"}), 401
+                            "detalle": "API Key inválida"}), 401
         return f(*args, **kwargs)
     return envoltura
+
+
+# ============================================================
+# Manejadores globales de errores HTTP
+# Todas las respuestas de error usan el mismo formato del
+# contrato REST: {"error": "<CODIGO>", "detalle": "<texto>"}.
+# Flask los usa para errores que ocurren ANTES de llegar a una
+# ruta (URL inexistente, método incorrecto, petición inválida,
+# excepción no controlada). Así el JSON siempre viene "vestido"
+# y el consumidor nunca recibe una página HTML por error.
+# ============================================================
+@app.errorhandler(400)
+def peticion_invalida(e):
+    return jsonify({"error": "PETICION_INVALIDA",
+                    "detalle": "La petición no es válida. "
+                               "Revisa los datos enviados."}), 400
+
+
+@app.errorhandler(404)
+def no_encontrado(e):
+    return jsonify({"error": "NO_ENCONTRADO",
+                    "detalle": "El recurso solicitado no existe."}), 404
+
+
+@app.errorhandler(405)
+def metodo_no_permitido(e):
+    return jsonify({"error": "METODO_NO_PERMITIDO",
+                    "detalle": "El método HTTP no está permitido "
+                               "para esta ruta."}), 405
+
+
+@app.errorhandler(500)
+def error_interno(e):
+    return jsonify({"error": "ERROR_INTERNO",
+                    "detalle": "Ocurrió un error inesperado "
+                               "en el servidor."}), 500
 
 
 def serializar(filas):
@@ -79,7 +115,7 @@ def openapi():
         if os.path.exists(r):
             return send_file(r, mimetype="text/yaml")
     return jsonify({"error": "NO_ENCONTRADO",
-                    "mensaje": "No se encontró el archivo openapi.yaml"}), 404
+                    "detalle": "No se encontró el archivo openapi.yaml"}), 404
 
 
 @app.get("/swagger")
@@ -101,7 +137,7 @@ def crear_dueno():
 
     if not nombre or not telefono:
         return jsonify({"error": "DATOS_INVALIDOS",
-                        "mensaje": "'nombre' y 'telefono' son obligatorios"}), 400
+                        "detalle": "'nombre' y 'telefono' son obligatorios"}), 400
 
     conn = get_conn()
     try:
@@ -148,7 +184,7 @@ def obtener_dueno(id_dueno):
         conn.close()
     if dueno is None:
         return jsonify({"error": "NO_ENCONTRADO",
-                        "mensaje": "El dueño no existe"}), 404
+                        "detalle": "El dueño no existe"}), 404
     return jsonify(serializar([dueno])[0]), 200
 
 
@@ -164,7 +200,7 @@ def listar_bloques():
         bloques = agenda_client.listar_bloques()
     except agenda_client.AgendaNoDisponibleError:
         return jsonify({"error": "AGENDA_NO_DISPONIBLE",
-                        "mensaje": "El servicio de Agenda no está disponible. "
+                        "detalle": "El servicio de Agenda no está disponible. "
                                    "Intenta de nuevo en un momento."}), 503
     return jsonify(bloques), 200
 
@@ -183,7 +219,7 @@ def crear_reserva():
 
     if not id_dueno or not id_bloque or not mascota:
         return jsonify({"error": "DATOS_INVALIDOS",
-                        "mensaje": "'id_dueno', 'id_bloque' y 'mascota_nombre' "
+                        "detalle": "'id_dueno', 'id_bloque' y 'mascota_nombre' "
                                    "son obligatorios"}), 400
 
     conn = get_conn()
@@ -195,7 +231,7 @@ def crear_reserva():
                     (id_dueno,))
         if cur.fetchone() is None:
             return jsonify({"error": "DUENO_NO_EXISTE",
-                            "mensaje": "El dueño indicado no existe"}), 404
+                            "detalle": "El dueño indicado no existe"}), 404
 
         # 2) Pedimos el cupo a Agenda (gRPC). Este es el punto de
         #    integración: si Agenda está caída -> 503 y NO insertamos nada.
@@ -203,12 +239,12 @@ def crear_reserva():
             resultado = agenda_client.reservar_cupo(id_bloque)
         except agenda_client.AgendaNoDisponibleError:
             return jsonify({"error": "AGENDA_NO_DISPONIBLE",
-                            "mensaje": "El servicio de Agenda no respondió. "
+                            "detalle": "El servicio de Agenda no respondió. "
                                        "Intenta de nuevo en un momento."}), 503
 
         if not resultado["exito"]:
             return jsonify({"error": "SIN_CUPO",
-                            "mensaje": resultado["mensaje"]}), 409
+                            "detalle": resultado["mensaje"]}), 409
 
         # 3) Si todo bien, guardamos la reserva. Guardamos también una
         #    COPIA de los datos de la cita (vienen en la respuesta de
@@ -269,7 +305,7 @@ def obtener_reserva(id_reserva):
         conn.close()
     if reserva is None:
         return jsonify({"error": "NO_ENCONTRADA",
-                        "mensaje": "La reserva no existe"}), 404
+                        "detalle": "La reserva no existe"}), 404
     return jsonify(serializar([reserva])[0]), 200
 
 
@@ -284,10 +320,10 @@ def cancelar_reserva(id_reserva):
         reserva = cur.fetchone()
         if reserva is None:
             return jsonify({"error": "NO_ENCONTRADA",
-                            "mensaje": "La reserva no existe"}), 404
+                            "detalle": "La reserva no existe"}), 404
         if reserva["estado"] == "cancelada":
             return jsonify({"error": "YA_CANCELADA",
-                            "mensaje": "La reserva ya estaba cancelada"}), 409
+                            "detalle": "La reserva ya estaba cancelada"}), 409
 
         # Liberamos el cupo en Agenda (gRPC). Si discutible soltar el
         # cupo primero o marcar después; en este MVP basta con esto.
@@ -295,7 +331,7 @@ def cancelar_reserva(id_reserva):
             agenda_client.liberar_cupo(reserva["id_bloque"])
         except agenda_client.AgendaNoDisponibleError:
             return jsonify({"error": "AGENDA_NO_DISPONIBLE",
-                            "mensaje": "No se pudo liberar el cupo en Agenda. "
+                            "detalle": "No se pudo liberar el cupo en Agenda. "
                                        "Intenta de nuevo."}), 503
 
         cur.execute("UPDATE reservas SET estado = 'cancelada' "
