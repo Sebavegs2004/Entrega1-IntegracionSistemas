@@ -1,0 +1,7 @@
+pytest>=8.0
+requests>=2.31
+pyyaml>=6.0
+jsonschema>=4.20
+openapi-spec-validator>=0.7.1
+grpcio>=1.60
+grpcio-tools>=1.60
