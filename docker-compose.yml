@@ -21,7 +21,7 @@ services:
       MYSQL_ROOT_PASSWORD: rootpass123
       MYSQL_DATABASE: agenda_db
       MYSQL_USER: agenda
-      
+
       MYSQL_PASSWORD: agenda123
     volumes:
       # El .sql se ejecuta la primera vez que se crea el volumen.
@@ -104,11 +104,104 @@ services:
       timeout: 5s
       retries: 6
 # ---------- Servicio de Caché ----------
-  redis_cache:                     
+  redis_cache:
     image: redis:7-alpine
     container_name: vet-redis
     ports:
       - "6379:6379"
+
+# ------------------------------------------------------------
+# ---------- Pruebas de contrato (OpenAPI + proto) ----------
+  # No arranca con "docker compose up": se ejecuta a demanda con:
+  #   docker compose --profile tests run --rm tests
+  tests:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile
+    container_name: tests
+    profiles: ["tests"]
+    environment:
+      AGENDA_HOST: agenda
+      AGENDA_PORT: "50051"
+      API_BASE: http://reservas:5000
+      API_KEY: clave-secreta-vet-2026
+      DB_HOST: mysql_reservas
+      DB_USER: reservas
+      DB_PASSWORD: reservas123
+      DB_NAME: reservas_db
+      DEGRADADA_BASE: http://reservas-degradada:5000
+    depends_on:
+      mysql_reservas:
+        condition: service_healthy
+      reservas:
+        condition: service_healthy
+      reservas-degradada:
+        condition: service_healthy
+      agenda:
+        condition: service_healthy
+
+# ---------- Instancia "degradada" de Reservas (solo para tests 503) ----------
+  # Misma imagen y Dockerfile que reservas, PERO apunta a una Agenda
+  # inexistente: la API responde 503 AGENDA_NO_DISPONIBLE. Comparte la
+  # base de datos de reservas. Se levanta solo con el profile "tests".
+  reservas-degradada:
+    build:
+      context: .
+      dockerfile: reservas/Dockerfile
+    container_name: reservas-degradada
+    profiles: ["tests"]
+    environment:
+      AGENDA_HOST: agenda-inexistente   # la diferencia clave
+      AGENDA_PORT: "50051"
+      API_KEY: clave-secreta-vet-2026
+      DB_HOST: mysql_reservas
+      DB_USER: reservas
+      DB_PASSWORD: reservas123
+      DB_NAME: reservas_db
+    depends_on:
+      mysql_reservas:
+        condition: service_healthy
+    # Sin "ports": solo es visible desde la red (tests la llaman por nombre).
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:5000/v1/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+# ---------- Segundo cliente gRPC (.NET) ----------
+  # Demostración de interoperabilidad: el mismo agenda.proto compilado
+  # a C# consumiendo el servidor Python. Corre dentro de la red (Agenda
+  # no expone puertos al host). No arranca con "up": se ejecuta con:
+  #   docker compose --profile cliente run --rm cliente-dotnet
+  cliente-dotnet:
+    build:
+      context: .
+      dockerfile: cliente-dotnet/Dockerfile
+    container_name: cliente-dotnet
+    profiles: ["cliente"]
+    environment:
+      AGENDA_HOST: agenda
+      AGENDA_PORT: "50051"
+    depends_on:
+      agenda:
+        condition: service_healthy
+
+# ---------- Primer cliente gRPC (Python) ----------
+  # Contracara de cliente-dotnet: mismo contrato agenda.proto, mismo
+  # servidor, otro lenguaje. Se ejecuta con:
+  #   docker compose --profile cliente run --rm cliente-python
+  cliente-python:
+    build:
+      context: .
+      dockerfile: cliente-python/Dockerfile
+    container_name: cliente-python
+    profiles: ["cliente"]
+    environment:
+      AGENDA_HOST: agenda
+      AGENDA_PORT: "50051"
+    depends_on:
+      agenda:
+        condition: service_healthy
 
 volumes:
   mysql_agenda_data:

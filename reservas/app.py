@@ -42,10 +42,10 @@ def requiere_api_key(f):
         clave = request.headers.get("X-API-Key")
         if not clave:
             return jsonify({"error": "NO_AUTORIZADO",
-                            "mensaje": "Falta el header X-API-Key"}), 401
+                            "detalle": "Falta el header X-API-Key"}), 401
         if clave != API_KEY:
             return jsonify({"error": "NO_AUTORIZADO",
-                            "mensaje": "API Key inválida"}), 401
+                            "detalle": "API Key inválida"}), 401
         return f(*args, **kwargs)
     return envoltura
 
