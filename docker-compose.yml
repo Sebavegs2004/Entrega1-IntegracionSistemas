@@ -1,55 +1,26 @@
+name: vidaanimal
+
 # ============================================================
 # Clínica Veterinaria VidaAnimal — levantamiento completo
 #
 #   docker compose up --build
 #
 # Servicios:
-#   - mysql_agenda    : base de datos del servicio Agenda
-#   - mysql_reservas  : base de datos del servicio Reservas
 #   - agenda          : servicio interno gRPC (sin puertos al host)
 #   - reservas        : API REST + interfaz web (localhost:5000)
+#   - redis_cache     : caché de bloques e idempotencia (sin puertos)
+#
+# Lo único publicado hacia el host es el puerto 5000 de Reservas:
+# Agenda y Redis se usan solo por nombre de servicio, dentro de la
+# red de Docker.
+#
+# No hay contenedores de base de datos: cada servicio usa SQLite
+# (un archivo .db) guardado en su propio volumen Docker
+# (agenda_data y reservas_data), así los datos sobreviven a
+# reinicios y reconstrucciones de la imagen.
 # ============================================================
-name: vidaanimal
 
 services:
-
-  # ---------- Base de datos del servicio Agenda ----------
-  mysql_agenda:
-    image: mysql:8.0
-    container_name: db-agenda
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpass123
-      MYSQL_DATABASE: agenda_db
-      MYSQL_USER: agenda
-      
-      MYSQL_PASSWORD: agenda123
-    volumes:
-      # El .sql se ejecuta la primera vez que se crea el volumen.
-      - ./sql/agenda.sql:/docker-entrypoint-initdb.d/agenda.sql:ro
-      - mysql_agenda_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -prootpass123"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-
-  # ---------- Base de datos del servicio Reservas ----------
-  mysql_reservas:
-    image: mysql:8.0
-    container_name: db-reservas
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpass123
-      MYSQL_DATABASE: reservas_db
-      MYSQL_USER: reservas
-      MYSQL_PASSWORD: reservas123
-    volumes:
-      - ./sql/reservas.sql:/docker-entrypoint-initdb.d/reservas.sql:ro
-      - mysql_reservas_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -prootpass123"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
 
   # ---------- Servicio interno Agenda (gRPC) ----------
   agenda:
@@ -59,13 +30,11 @@ services:
     container_name: agenda
     environment:
       AGENDA_PORT: "50051"
-      DB_HOST: mysql_agenda
-      DB_USER: agenda
-      DB_PASSWORD: agenda123
-      DB_NAME: agenda_db
-    depends_on:
-      mysql_agenda:
-        condition: service_healthy
+      DB_PATH: /data/agenda.db
+    volumes:
+      # El archivo SQLite vive en el volumen: no se borra al
+      # reiniciar o reconstruir el contenedor.
+      - agenda_data:/data
     # Sin "ports": Agenda es un servicio interno, solo visible en la
     # red de Docker. Reservas se comunica con él por gRPC.
     healthcheck:
@@ -86,14 +55,13 @@ services:
       AGENDA_HOST: agenda
       AGENDA_PORT: "50051"
       API_KEY: clave-secreta-vet-2026
-      DB_HOST: mysql_reservas
-      DB_USER: reservas
-      DB_PASSWORD: reservas123
-      DB_NAME: reservas_db
+      DB_PATH: /data/reservas.db
       REDIS_HOST: redis_cache
+    volumes:
+      # El archivo SQLite vive en el volumen: no se borra al
+      # reiniciar o reconstruir el contenedor.
+      - reservas_data:/data
     depends_on:
-      mysql_reservas:
-        condition: service_healthy
       agenda:
         condition: service_healthy
       redis_cache:
@@ -103,13 +71,15 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
-# ---------- Servicio de Caché ----------
-  redis_cache:                     
+
+  # ---------- Servicio de Caché ----------
+  redis_cache:
     image: redis:7-alpine
     container_name: vet-redis
-    ports:
-      - "6379:6379"
+    # Sin "ports": la caché es interna, como Agenda. Reservas es el
+    # único que la usa y lo hace por el nombre del servicio en la
+    # red de Docker. Desde el host no se puede hablar con ella.
 
 volumes:
-  mysql_agenda_data:
-  mysql_reservas_data:
+  agenda_data:
+  reservas_data:

@@ -18,82 +18,51 @@ import grpc
 # (el Dockerfile las genera al construir la imagen).
 import agenda_pb2
 import agenda_pb2_grpc
-from db import get_conn, get_dict_cursor
+from db import get_conn, inicializar
+
+# Puerto interno de gRPC (lo define docker-compose.yml).
+AGENDA_PORT = os.environ.get("AGENDA_PORT", "50051")
 
 
 class AgendaServiceServicer(agenda_pb2_grpc.AgendaServiceServicer):
-    """Implementa las operaciones definidas en agenda.proto."""
+    """Implementa las operaciones definidas en agenda.proto.
+
+    Son las mismas tres que consume el cliente de Reservas: listar
+    bloques, reservar un cupo y liberarlo. No hay ninguna operación en el
+    .proto que el cliente no use, ni al revés.
+    """
 
     # -----------------------------------------------
-    # 1) Consultar un veterinario y sus cupos libres
-    # -----------------------------------------------
-    def ConsultarVeterinario(self, request, context):
-        conn = get_conn()
-        try:
-            cur = get_dict_cursor(conn)
-            # JOIN: juntamos la fila del veterinario con su bloque
-            # usando el id del bloque que llegó en el request.
-            cur.execute(
-                """SELECT v.nombre, v.especialidad, b.cupos_libres
-                   FROM veterinarios v
-                   JOIN bloques_horarios b
-                     ON b.id_veterinario = v.id_veterinario
-                   WHERE v.id_veterinario = %s AND b.id_bloque = %s""",
-                (request.id_veterinario, request.id_bloque),
-            )
-            fila = cur.fetchone()
-        finally:
-            conn.close()
-
-        if fila is None:
-            # Error gRPC: el canal le avisa al cliente con un código.
-            context.set_code(grpc.StatusCode.NOT_FOUND)
-            context.set_details("Veterinario o bloque no encontrado")
-            return agenda_pb2.VeterinarioResponse()
-
-        return agenda_pb2.VeterinarioResponse(
-            id_veterinario=request.id_veterinario,
-            nombre=fila["nombre"],
-            especialidad=fila["especialidad"],
-            id_bloque=request.id_bloque,
-            cupos_libres=fila["cupos_libres"],
-            disponible=fila["cupos_libres"] > 0,
-        )
-
-    # -----------------------------------------------
-    # 2) Listar la agenda de bloques disponibles
+    # 1) Listar la agenda de bloques disponibles
     # -----------------------------------------------
     def ListarBloques(self, request, context):
         conn = get_conn()
         try:
-            cur = get_dict_cursor(conn)
             sql = """SELECT b.*, v.nombre AS nombre_veterinario, v.especialidad
                      FROM bloques_horarios b
                      JOIN veterinarios v ON v.id_veterinario = b.id_veterinario
                      WHERE 1 = 1"""
             params = []
             if request.id_veterinario != 0:   # filtro opcional por veterinario
-                sql += " AND b.id_veterinario = %s"
+                sql += " AND b.id_veterinario = ?"
                 params.append(request.id_veterinario)
             if request.fecha:                 # filtro opcional por fecha
-                sql += " AND b.fecha = %s"
+                sql += " AND b.fecha = ?"
                 params.append(request.fecha)
             sql += " ORDER BY b.fecha, b.hora_inicio"
 
-            cur.execute(sql, params)
-            filas = cur.fetchall()
+            filas = conn.execute(sql, params).fetchall()
         finally:
             conn.close()
 
         bloques = []
         for f in filas:
-            # str(fecha) convierte la fecha (DATE) en texto "AAAA-MM-DD"
             bloques.append(agenda_pb2.BloqueHorario(
                 id=f["id_bloque"],
                 id_veterinario=f["id_veterinario"],
                 nombre_veterinario=f["nombre_veterinario"],
                 especialidad=f["especialidad"],
-                fecha=str(f["fecha"]),
+                fecha=f["fecha"],
                 hora_inicio=f["hora_inicio"],
                 hora_fin=f["hora_fin"],
                 cupos_libres=f["cupos_libres"],
@@ -101,18 +70,17 @@ class AgendaServiceServicer(agenda_pb2_grpc.AgendaServiceServicer):
         return agenda_pb2.ListarBloquesResponse(bloques=bloques)
 
     # -----------------------------------------------
-    # 3) Reservar un cupo (resta 1)
+    # 2) Reservar un cupo (resta 1)
     # -----------------------------------------------
     def ReservarCupo(self, request, context):
         conn = get_conn()
         try:
-            cur = get_dict_cursor(conn)
             # UPDATE atómico: solo descuenta si todavía quedan cupos.
             # Si rowcount == 0, el bloque no existía o estaba lleno.
-            cur.execute(
+            cur = conn.execute(
                 """UPDATE bloques_horarios
                    SET cupos_libres = cupos_libres - 1
-                   WHERE id_bloque = %s AND cupos_libres > 0""",
+                   WHERE id_bloque = ? AND cupos_libres > 0""",
                 (request.id_bloque,),
             )
             if cur.rowcount == 0:
@@ -122,14 +90,13 @@ class AgendaServiceServicer(agenda_pb2_grpc.AgendaServiceServicer):
 
             # Recuperamos los datos del bloque (con el veterinario) para
             # devolverlos en la respuesta y que Reservas guarde una copia.
-            cur.execute(
+            f = conn.execute(
                 """SELECT b.*, v.nombre AS nombre_veterinario, v.especialidad
                    FROM bloques_horarios b
                    JOIN veterinarios v ON v.id_veterinario = b.id_veterinario
-                   WHERE b.id_bloque = %s""",
+                   WHERE b.id_bloque = ?""",
                 (request.id_bloque,),
-            )
-            f = cur.fetchone()
+            ).fetchone()
             conn.commit()   # confirmamos el cambio en la base
         finally:
             conn.close()
@@ -142,7 +109,7 @@ class AgendaServiceServicer(agenda_pb2_grpc.AgendaServiceServicer):
                 id_veterinario=f["id_veterinario"],
                 nombre_veterinario=f["nombre_veterinario"],
                 especialidad=f["especialidad"],
-                fecha=str(f["fecha"]),
+                fecha=f["fecha"],
                 hora_inicio=f["hora_inicio"],
                 hora_fin=f["hora_fin"],
                 cupos_libres=f["cupos_libres"],
@@ -150,17 +117,16 @@ class AgendaServiceServicer(agenda_pb2_grpc.AgendaServiceServicer):
         )
 
     # -----------------------------------------------
-    # 4) Liberar un cupo (suma 1) — al cancelar una reserva
+    # 3) Liberar un cupo (suma 1) — al cancelar una reserva
     # -----------------------------------------------
     def LiberarCupo(self, request, context):
         conn = get_conn()
         try:
-            cur = get_dict_cursor(conn)
             # Solo suma si no supera el tope del bloque.
-            cur.execute(
+            cur = conn.execute(
                 """UPDATE bloques_horarios
                    SET cupos_libres = cupos_libres + 1
-                   WHERE id_bloque = %s AND cupos_libres < cupos_totales""",
+                   WHERE id_bloque = ? AND cupos_libres < cupos_totales""",
                 (request.id_bloque,),
             )
             if cur.rowcount == 0:
@@ -176,12 +142,15 @@ class AgendaServiceServicer(agenda_pb2_grpc.AgendaServiceServicer):
 
 def serve():
     """Levanta el servidor gRPC."""
+    # Crea el archivo SQLite y sus tablas (solo si no existen).
+    inicializar()
+
     # Ejecuta las peticiones en hasta 10 hilos en paralelo.
     servidor = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     agenda_pb2_grpc.add_AgendaServiceServicer_to_server(
         AgendaServiceServicer(), servidor)
 
-    puerto = os.environ.get("AGENDA_PORT", "50051")
+    puerto = AGENDA_PORT
     # Escucha en todas las interfaces, pero solo es accesible
     # dentro de la red de Docker (no hay "ports" hacia el host).
     servidor.add_insecure_port(f"[::]:{puerto}")

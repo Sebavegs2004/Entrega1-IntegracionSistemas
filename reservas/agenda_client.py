@@ -4,7 +4,7 @@
 # Aquí está el corazón de la integración: Reservas (REST) se
 # comunica con Agenda (gRPC) para consultar y modificar cupos.
 # Como todo es petición -> respuesta única, usamos el modo de
-# invocación gRPC "Unary" (los 4 métodos del .proto).
+# invocación gRPC "Unary" (los 3 métodos del .proto).
 #
 # Si Agenda está caída o tarda demasiado, lanzamos
 # AgendaNoDisponibleError, y la API responde 503 (ver app.py).
@@ -17,6 +17,11 @@ import grpc
 import agenda_pb2
 import agenda_pb2_grpc
 
+# A quién hablamos por gRPC (lo definen las variables de entorno de
+# docker-compose.yml).
+AGENDA_HOST = os.environ.get("AGENDA_HOST", "agenda")
+AGENDA_PORT = os.environ.get("AGENDA_PORT", "50051")
+
 # Tiempo máximo de espera por respuesta (en segundos).
 TIMEOUT = 3
 
@@ -27,10 +32,12 @@ class AgendaNoDisponibleError(Exception):
 
 def _crear_stub():
     """Crea el canal y el 'stub': el objeto que permite llamar a los
-    métodos remotos como si fueran métodos locales."""
-    host = os.environ.get("AGENDA_HOST", "agenda")
-    puerto = os.environ.get("AGENDA_PORT", "50051")
-    canal = grpc.insecure_channel(f"{host}:{puerto}")
+    métodos remotos como si fueran métodos locales.
+
+    El host es el nombre del servicio Agenda en la red de Docker
+    (docker-compose.yml): no hay una ruta local a la que apelar.
+    """
+    canal = grpc.insecure_channel(f"{AGENDA_HOST}:{AGENDA_PORT}")
     return agenda_pb2_grpc.AgendaServiceStub(canal)
 
 
@@ -63,15 +70,6 @@ def listar_bloques(id_veterinario=0, fecha=""):
         }
         for b in respuesta.bloques
     ]
-
-
-def consultar_veterinario(id_veterinario, id_bloque):
-    """Consulta un veterinario y los cupos libres de uno de sus bloques.
-    Devuelve el mensaje VeterinarioResponse tal como llega del servidor."""
-    stub = _crear_stub()
-    return _invocar(stub.ConsultarVeterinario,
-                    agenda_pb2.ConsultarVeterinarioRequest(
-                        id_veterinario=id_veterinario, id_bloque=id_bloque))
 
 
 def reservar_cupo(id_bloque):

@@ -1,0 +1,2227 @@
+{
+  "info": {
+    "name": "VidaAnimal · API de Reservas (Flask + gRPC + SQLite)",
+    "description": "Coleccion de pruebas de la API publica de Reservas (http://localhost:5000).\n\n**Como usarla**\n1. `docker compose up --build`\n2. Importa este archivo en Postman: *Import > Link/Text/File*.\n3. Boton *Run* sobre la coleccion completa (las pruebas se pasan datos de una a otra, asi que importa el orden: la 201 de duenos guarda `id_dueno` y la 201 de reservas guarda `id_reserva`).\n\n**Variables**\n- `base_url` y `api_key` son las unicas que hay que tocar (si cambiaste el puerto o la clave en docker-compose.yml).\n- `id_dueno`, `id_bloque`, `id_reserva` e `idempotency_key` las llenan solas las pruebas de creacion.\n- `agenda_caida` dejala en `no` salvo que vayas a probar los 503 (carpeta 6).\n\n**Estados cubiertos**: 200, 201, 204, 400, 401, 404, 405, 409, 415 y 503. El 503 necesita Agenda apagado (ver carpeta 6).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0 · Salud y documentacion",
+      "description": "El servicio esta arriba y la documentacion responde en la ruta /v1/docs, que muestra el contrato contracts/openapi.yaml.",
+      "item": [
+        {
+          "name": "GET /v1/health (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "health"
+              ]
+            },
+            "description": "Comprobacion de vida del servicio. Es la unica ruta que NO pide API Key."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Cuerpo {status: ok}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.eql({ status: \"ok\" });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/docs (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/docs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "docs"
+              ]
+            },
+            "description": "Interfaz grafica de Swagger UI. La especificacion ya no se sirve en una ruta aparte: Flask lee contracts/openapi.yaml y la pasa a la pagina, asi que estas pruebas verifican que el contrato siga describiendo la API real."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Content-Type text/html\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/html\");",
+                  "});",
+                  "pm.test(\"Carga Swagger UI con la especificacion\", function () {",
+                  "    const html = pm.response.text();",
+                  "    pm.expect(html).to.include(\"swagger-ui\");",
+                  "    pm.expect(html).to.match(/\"openapi\":\\s*\"3\\.0\\.3\"/);",
+                  "});",
+                  "pm.test(\"Documenta las rutas reales de la API\", function () {",
+                  "    const html = pm.response.text();",
+                  "    [\"/v1/duenos\", \"/v1/duenos/{id_dueno}\", \"/v1/bloques\",",
+                  "     \"/v1/reservas\", \"/v1/reservas/{id_reserva}\", \"/v1/health\"]",
+                  "        .forEach(function (ruta) {",
+                  "            pm.expect(html).to.include(ruta);",
+                  "        });",
+                  "});",
+                  "pm.test(\"Documenta la autenticacion con X-API-Key\", function () {",
+                  "    pm.expect(pm.response.text()).to.include(\"X-API-Key\");",
+                  "});",
+                  "pm.test(\"Los schemas de error se nombran por codigo HTTP\", function () {",
+                  "    const html = pm.response.text();",
+                  "    [\"Error400\", \"Error401\", \"Error404\", \"Error409\", \"Error415\", \"Error503\"]",
+                  "        .forEach(function (nombre) {",
+                  "            pm.expect(html).to.include(\"#/components/schemas/\" + nombre);",
+                  "        });",
+                  "    // Los nombres por recurso no deben volver.",
+                  "    [\"ErrorNoEncontrado\", \"ErrorNoEncontrada\", \"ErrorDuenoNoExiste\",",
+                  "     \"ErrorSinCupo\", \"ErrorYaCancelada\", \"ErrorDatosInvalidos\",",
+                  "     \"ErrorAgendaNoDisponible\", \"ErrorNoAutorizado\"]",
+                  "        .forEach(function (viejo) {",
+                  "            pm.expect(html).to.not.include(viejo);",
+                  "        });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/no-existe (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/no-existe",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "no-existe"
+              ]
+            },
+            "description": "Ruta inexistente. Comprueba que el 404 del manejador global de errores sale en JSON y con un mensaje general."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error NO_ENCONTRADO\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"NO_ENCONTRADO\");",
+                  "});",
+                  "pm.test(\"El detalle es general (no menciona un recurso)\", function () {",
+                  "    const d = pm.response.json().detalle.toLowerCase();",
+                  "    [\"dueno\", \"dueño\", \"reserva\", \"bloque\", \"veterinario\"]",
+                  "        .forEach(function (palabra) {",
+                  "            pm.expect(d).to.not.include(palabra);",
+                  "        });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 · Autenticacion (401)",
+      "description": "El header X-API-Key es obligatorio en toda la API salvo en /v1/health.",
+      "item": [
+        {
+          "name": "GET /v1/duenos sin X-API-Key (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/duenos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "duenos"
+              ]
+            },
+            "description": "Sin header de autenticacion."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error NO_AUTORIZADO\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"NO_AUTORIZADO\");",
+                  "});",
+                  "pm.test(\"Detalle indica que falta la clave\", function () {",
+                  "    pm.expect(pm.response.json().detalle).to.include(\"X-API-Key\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/duenos con API Key invalida (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "clave-incorrecta"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/duenos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "duenos"
+              ]
+            },
+            "description": "La clave existe pero no es la correcta."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error NO_AUTORIZADO\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"NO_AUTORIZADO\");",
+                  "});",
+                  "pm.test(\"Detalle indica que la clave es invalida\", function () {",
+                  "    pm.expect(pm.response.json().detalle).to.include(\"inválida\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 · Duenos",
+      "description": "Alta, consulta y validacion de duenos.",
+      "item": [
+        {
+          "name": "POST /v1/duenos (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/duenos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "duenos"
+              ]
+            },
+            "description": "Crea un dueno y guarda su id en la variable id_dueno para las pruebas siguientes. El nombre lleva la hora de ejecucion para no duplicar el mismo dueno en cada corrida.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"{{nombre_prueba}}\",\n  \"telefono\": \"+5690000000\",\n  \"email\": \"prueba@vidanimal.cl\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Nombre unico por ejecucion: asi se puede correr la coleccion",
+                  "// varias veces sin crear siempre el mismo dueno.",
+                  "pm.collectionVariables.set(\"nombre_prueba\", \"Dueno de prueba \" + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Devuelve el dueno creado\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"id_dueno\").that.is.a(\"number\");",
+                  "    pm.expect(b.nombre).to.eql(pm.collectionVariables.get(\"nombre_prueba\"));",
+                  "    pm.expect(b.telefono).to.eql(\"+5690000000\");",
+                  "    pm.expect(b.email).to.eql(\"prueba@vidanimal.cl\");",
+                  "    pm.expect(Object.keys(b).sort()).to.eql([\"email\", \"id_dueno\", \"nombre\", \"telefono\"]);",
+                  "});",
+                  "pm.collectionVariables.set(\"id_dueno\", pm.response.json().id_dueno);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/duenos sin telefono (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/duenos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "duenos"
+              ]
+            },
+            "description": "Validacion de entrada: falta un campo obligatorio.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Sin telefono\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error DATOS_INVALIDOS\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"DATOS_INVALIDOS\");",
+                  "});",
+                  "pm.test(\"El detalle dice que campos faltan\", function () {",
+                  "    const d = pm.response.json().detalle;",
+                  "    pm.expect(d).to.include(\"nombre\");",
+                  "    pm.expect(d).to.include(\"telefono\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/duenos con cuerpo no JSON (415)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/duenos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "duenos"
+              ]
+            },
+            "description": "El cuerpo llega como texto plano. Flask rechaza el Content-Type y responde 415 (no 400), por eso existe un manejador para el 415.",
+            "body": {
+              "mode": "raw",
+              "raw": "nombre=Ana&telefono=123",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 415\", function () {",
+                  "    pm.response.to.have.status(415);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error CONTENIDO_NO_SOPORTADO\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"CONTENIDO_NO_SOPORTADO\");",
+                  "});",
+                  "pm.test(\"El detalle pide application/json\", function () {",
+                  "    pm.expect(pm.response.json().detalle).to.include(\"application/json\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/duenos con JSON invalido (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/duenos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "duenos"
+              ]
+            },
+            "description": "El Content-Type es JSON pero el cuerpo esta incompleto: lo detecta Flask al leer el cuerpo y responde 400.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"nombre\": ",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error DATOS_INVALIDOS\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"DATOS_INVALIDOS\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/duenos (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/duenos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "duenos"
+              ]
+            },
+            "description": "Lista todos los duenos (ordenados por nombre)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Devuelve una lista de duenos\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.be.an(\"array\");",
+                  "    b.forEach(function (d) {",
+                  "        pm.expect(d).to.have.property(\"id_dueno\").that.is.a(\"number\");",
+                  "        pm.expect(d).to.have.property(\"nombre\").that.is.a(\"string\");",
+                  "        pm.expect(d).to.have.property(\"telefono\").that.is.a(\"string\");",
+                  "    });",
+                  "});",
+                  "pm.test(\"Incluye el dueno creado en la prueba anterior\", function () {",
+                  "    const b = pm.response.json();",
+                  "    const nombre = pm.collectionVariables.get(\"nombre_prueba\");",
+                  "    if (nombre) {",
+                  "        pm.expect(b.some(function (d) { return d.nombre === nombre; })).to.be.true;",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/duenos?nombre= (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/duenos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "duenos"
+              ],
+              "query": [
+                {
+                  "key": "nombre",
+                  "value": "de prueba"
+                }
+              ]
+            },
+            "description": "Filtro por nombre (busqueda parcial con LIKE)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Todos los resultados contienen el texto buscado\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.be.an(\"array\");",
+                  "    b.forEach(function (d) {",
+                  "        pm.expect(d.nombre.toLowerCase()).to.include(\"de prueba\");",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/duenos/{id_dueno} (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/duenos/{{id_dueno}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "duenos",
+                "{{id_dueno}}"
+              ]
+            },
+            "description": "Dueño existente. Usa la variable id_dueno que guardo la prueba 201."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Devuelve el dueno pedido\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(String(b.id_dueno)).to.eql(String(pm.collectionVariables.get(\"id_dueno\")));",
+                  "    pm.expect(b).to.have.property(\"nombre\");",
+                  "    pm.expect(b).to.have.property(\"telefono\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/duenos/999999 (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/duenos/999999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "duenos",
+                "999999"
+              ]
+            },
+            "description": "Dueño inexistente. El 404 es general: no dice que falta un dueno concreto, porque el mismo codigo se usa para reservas y para rutas inexistentes."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error NO_ENCONTRADO\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"NO_ENCONTRADO\");",
+                  "});",
+                  "pm.test(\"El detalle es general (no menciona un recurso)\", function () {",
+                  "    const d = pm.response.json().detalle.toLowerCase();",
+                  "    [\"dueno\", \"dueño\", \"reserva\", \"bloque\", \"veterinario\"]",
+                  "        .forEach(function (palabra) {",
+                  "            pm.expect(d).to.not.include(palabra);",
+                  "        });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /v1/duenos/{id_dueno} (405)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/duenos/{{id_dueno}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "duenos",
+                "{{id_dueno}}"
+              ]
+            },
+            "description": "Metodo no permitido: la ruta existe pero no admite DELETE."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 405\", function () {",
+                  "    pm.response.to.have.status(405);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error METODO_NO_PERMITIDO\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"METODO_NO_PERMITIDO\");",
+                  "});",
+                  "pm.test(\"El detalle menciona el metodo HTTP\", function () {",
+                  "    pm.expect(pm.response.json().detalle).to.include(\"método\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 · Bloques (Agenda via gRPC)",
+      "description": "El servicio de Reservas hace de fachada y pide los bloques a Agenda.",
+      "item": [
+        {
+          "name": "GET /v1/bloques (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/bloques",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "bloques"
+              ]
+            },
+            "description": "Bloques horarios que devuelve Agenda via gRPC (con su cache en Redis de 60 segundos)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Devuelve una lista de bloques con los 8 campos\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.be.an(\"array\").that.is.not.empty;",
+                  "    b.forEach(function (x) {",
+                  "        [\"id\", \"id_veterinario\", \"nombre_veterinario\", \"especialidad\",",
+                  "         \"fecha\", \"hora_inicio\", \"hora_fin\", \"cupos_libres\"]",
+                  "            .forEach(function (campo) {",
+                  "                pm.expect(x).to.have.property(campo);",
+                  "            });",
+                  "        pm.expect(x.id).to.be.a(\"number\");",
+                  "        pm.expect(x.cupos_libres).to.be.a(\"number\");",
+                  "    });",
+                  "});",
+                  "pm.test(\"Fechas y horas con el formato del contrato\", function () {",
+                  "    pm.response.json().forEach(function (x) {",
+                  "        pm.expect(x.fecha).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+                  "        pm.expect(x.hora_inicio).to.match(/^\\d{2}:\\d{2}$/);",
+                  "        pm.expect(x.hora_fin).to.match(/^\\d{2}:\\d{2}$/);",
+                  "    });",
+                  "});",
+                  "pm.test(\"Hay al menos un bloque con cupo libre\", function () {",
+                  "    const libres = pm.response.json().filter(function (x) {",
+                  "        return x.cupos_libres > 0;",
+                  "    });",
+                  "    pm.expect(libres.length).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 · Reservas: alta",
+      "description": "Crear reservas, incluida la idempotencia (primero 201 y luego 200 con la misma Idempotency-Key).",
+      "item": [
+        {
+          "name": "POST /v1/reservas (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}",
+                "description": "Clave unica de la peticion"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas"
+              ]
+            },
+            "description": "Crea la reserva y guarda su id en id_reserva. Usa una clave de idempotencia nueva en cada ejecucion.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{cuerpo_reserva}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Postor escribe {{...}} siempre como texto dentro del JSON, y Agenda",
+                  "// (gRPC) exige enteros: armamos el cuerpo aqui para que id_dueno e",
+                  "// id_bloque viajen como numeros.",
+                  "const cuerpo = {",
+                  "    id_dueno: Number(pm.collectionVariables.get(\"id_dueno\")),",
+                  "    id_bloque: Number(pm.collectionVariables.get(\"id_bloque\")),",
+                  "    mascota_nombre: \"Rex\",",
+                  "    motivo: \"Prueba automatizada\"",
+                  "};",
+                  "pm.collectionVariables.set(\"cuerpo_reserva\", JSON.stringify(cuerpo));",
+                  "",
+                  "// Clave de idempotencia unica por ejecucion: la repetimos en la",
+                  "// prueba siguiente para comprobar que no se duplica la reserva.",
+                  "pm.collectionVariables.set(\"idempotency_key\", \"prueba-\" + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Devuelve la reserva creada\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"id_reserva\").that.is.a(\"number\");",
+                  "    pm.expect(b.id_dueno).to.be.a(\"number\");",
+                  "    pm.expect(b.id_bloque).to.be.a(\"number\");",
+                  "    pm.expect(b.mascota_nombre).to.eql(\"Rex\");",
+                  "    pm.expect(b.estado).to.eql(\"activa\");",
+                  "    pm.expect(b).to.have.property(\"nombre_veterinario\").that.is.a(\"string\");",
+                  "    pm.expect(b.fecha).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+                  "    pm.expect(b.hora_inicio).to.match(/^\\d{2}:\\d{2}$/);",
+                  "});",
+                  "pm.test(\"creada_en con formato AAAA-MM-DD AA:MM:SS\", function () {",
+                  "    pm.expect(pm.response.json().creada_en)",
+                  "        .to.match(/^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/);",
+                  "});",
+                  "pm.test(\"Referencia al dueno y al bloque pedidos\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b.id_dueno).to.eql(Number(pm.collectionVariables.get(\"id_dueno\")));",
+                  "    pm.expect(b.id_bloque).to.eql(Number(pm.collectionVariables.get(\"id_bloque\")));",
+                  "});",
+                  "pm.collectionVariables.set(\"id_reserva\", pm.response.json().id_reserva);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/reservas con la misma Idempotency-Key (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}",
+                "description": "La misma clave del request anterior"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas"
+              ]
+            },
+            "description": "Repite la peticion anterior con la misma clave. La API debe devolver 200 con la reserva ya creada, sin crear una nueva. Ejecutar despues de 'POST /v1/reservas (201)'.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{cuerpo_reserva}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Devuelve la misma reserva, no una nueva\", function () {",
+                  "    pm.expect(String(pm.response.json().id_reserva))",
+                  "        .to.eql(String(pm.collectionVariables.get(\"id_reserva\")));",
+                  "});",
+                  "pm.test(\"La respuesta es la reserva ya guardada\", function () {",
+                  "    // Si se hubiera creado otra reserva, el estado seria 201 y el id otro.",
+                  "    pm.expect(pm.response.json()).to.have.property(\"id_reserva\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/reservas sin datos (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas"
+              ]
+            },
+            "description": "Faltan los campos obligatorios.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_dueno\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error DATOS_INVALIDOS\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"DATOS_INVALIDOS\");",
+                  "});",
+                  "pm.test(\"El detalle lista los campos obligatorios\", function () {",
+                  "    const d = pm.response.json().detalle;",
+                  "    pm.expect(d).to.include(\"id_dueno\");",
+                  "    pm.expect(d).to.include(\"id_bloque\");",
+                  "    pm.expect(d).to.include(\"mascota_nombre\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/reservas con dueno inexistente (404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas"
+              ]
+            },
+            "description": "El id_dueno no existe en la base de Reservas, asi que no se llama a Agenda. Responde con el 404 general.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_dueno\": 999999,\n  \"id_bloque\": 1,\n  \"mascota_nombre\": \"Rex\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error NO_ENCONTRADO\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"NO_ENCONTRADO\");",
+                  "});",
+                  "pm.test(\"El detalle es general (no menciona un recurso)\", function () {",
+                  "    const d = pm.response.json().detalle.toLowerCase();",
+                  "    [\"dueno\", \"dueño\", \"reserva\", \"bloque\", \"veterinario\"]",
+                  "        .forEach(function (palabra) {",
+                  "            pm.expect(d).to.not.include(palabra);",
+                  "        });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/reservas con bloque sin cupos (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas"
+              ]
+            },
+            "description": "El bloque id_bloque_lleno esta agotado en los datos de ejemplo (cupos_libres = 0), asi que Agenda rechaza la reserva y la API responde 409 en vez de 503.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{cuerpo_reserva_lleno}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cuerpo = {",
+                  "    id_dueno: Number(pm.collectionVariables.get(\"id_dueno\")),",
+                  "    id_bloque: Number(pm.collectionVariables.get(\"id_bloque_lleno\")),",
+                  "    mascota_nombre: \"Rex\",",
+                  "    motivo: \"Prueba automatizada\"",
+                  "};",
+                  "pm.collectionVariables.set(\"cuerpo_reserva_lleno\", JSON.stringify(cuerpo));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 409\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error SIN_CUPO\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"SIN_CUPO\");",
+                  "});",
+                  "pm.test(\"No se guardo la reserva\", function () {",
+                  "    // Si no se guardo, el bloque sigue con los mismos datos.",
+                  "    pm.expect(pm.response.json()).to.not.have.property(\"id_reserva\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/reservas con cuerpo no JSON (415)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas"
+              ]
+            },
+            "description": "Cuerpo enviado como texto plano.",
+            "body": {
+              "mode": "raw",
+              "raw": "id_dueno=1",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 415\", function () {",
+                  "    pm.response.to.have.status(415);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error CONTENIDO_NO_SOPORTADO\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"CONTENIDO_NO_SOPORTADO\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 · Reservas: consulta",
+      "description": "Listar y filtrar reservas, y el detalle con enlaces HATEOAS.",
+      "item": [
+        {
+          "name": "GET /v1/reservas (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas"
+              ]
+            },
+            "description": "Lista todas las reservas, de la mas reciente a la mas antigua."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Devuelve una lista de reservas\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.be.an(\"array\");",
+                  "    b.forEach(function (r) {",
+                  "        pm.expect(r).to.have.property(\"id_reserva\").that.is.a(\"number\");",
+                  "        pm.expect(r).to.have.property(\"id_dueno\").that.is.a(\"number\");",
+                  "        pm.expect(r).to.have.property(\"id_bloque\").that.is.a(\"number\");",
+                  "        pm.expect(r).to.have.property(\"mascota_nombre\").that.is.a(\"string\");",
+                  "        pm.expect([\"activa\", \"cancelada\"]).to.include(r.estado);",
+                  "    });",
+                  "});",
+                  "pm.test(\"Ordenadas de la mas reciente a la mas antigua\", function () {",
+                  "    const b = pm.response.json();",
+                  "    for (let i = 1; i < b.length; i++) {",
+                  "        pm.expect(b[i - 1].creada_en >= b[i].creada_en).to.be.true;",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/reservas?estado=activa (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "activa"
+                }
+              ]
+            },
+            "description": "Filtro por estado."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Todas las reservas estan activas\", function () {",
+                  "    pm.response.json().forEach(function (r) {",
+                  "        pm.expect(r.estado).to.eql(\"activa\");",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/reservas?estado=inexistente (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "inexistente"
+                }
+              ]
+            },
+            "description": "Un filtro que no coincide con nada devuelve 200 con lista vacia (no un 404)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Lista vacia\", function () {",
+                  "    pm.expect(pm.response.json()).to.eql([]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/reservas/{id_reserva} (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas/{{id_reserva}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas",
+                "{{id_reserva}}"
+              ]
+            },
+            "description": "Reserva existente, con los enlaces HATEOAS en _links."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Devuelve la reserva pedida\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(String(b.id_reserva)).to.eql(String(pm.collectionVariables.get(\"id_reserva\")));",
+                  "    pm.expect(b.estado).to.eql(\"activa\");",
+                  "});",
+                  "pm.test(\"Incluye los enlaces HATEOAS\", function () {",
+                  "    const l = pm.response.json()._links;",
+                  "    pm.expect(l).to.be.an(\"object\");",
+                  "    pm.expect(l.self).to.eql(\"/v1/reservas/\" + pm.response.json().id_reserva);",
+                  "    pm.expect(l.dueno).to.eql(\"/v1/duenos/\" + pm.response.json().id_dueno);",
+                  "});",
+                  "pm.test(\"Ofrece el enlace de cancelar porque sigue activa\", function () {",
+                  "    const l = pm.response.json()._links;",
+                  "    pm.expect(l.cancelar).to.be.an(\"object\");",
+                  "    pm.expect(l.cancelar.metodo).to.eql(\"DELETE\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/reservas/999999 (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas/999999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas",
+                "999999"
+              ]
+            },
+            "description": "Reserva inexistente. Mismo 404 general que usan las demas rutas."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error NO_ENCONTRADO\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"NO_ENCONTRADO\");",
+                  "});",
+                  "pm.test(\"El detalle es general (no menciona un recurso)\", function () {",
+                  "    const d = pm.response.json().detalle.toLowerCase();",
+                  "    [\"dueno\", \"dueño\", \"reserva\", \"bloque\", \"veterinario\"]",
+                  "        .forEach(function (palabra) {",
+                  "            pm.expect(d).to.not.include(palabra);",
+                  "        });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6 · Agenda caida (503)",
+      "description": "Para correrla: `docker compose stop agenda`, poner el valor `si` en la variable `agenda_caida` (pestana Variables de la coleccion o un entorno de Postman) y ejecutar esta carpeta. Despues: `docker compose start agenda`. Con Agenda arriba las peticiones se omiten solas, sin fallar la corrida. Esta carpeta va antes de la de cancelacion porque necesita una reserva todavia activa.",
+      "item": [
+        {
+          "name": "GET /v1/bloques con Agenda caido (503)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/bloques",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "bloques"
+              ]
+            },
+            "description": "Requiere Agenda apagado. El cliente gRPC da timeout y la API responde 503 sin HTML."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Estas pruebas necesitan Agenda apagado:",
+                  "//   docker compose stop agenda",
+                  "// y el valor \"si\" en la variable agenda_caida (puedes ponerlo en la",
+                  "// pestana Variables de la coleccion o en un entorno de Postman).",
+                  "// Con Agenda arriba la peticion se omite y la corrida sigue en verde.",
+                  "if (pm.variables.get(\"agenda_caida\") !== \"si\") {",
+                  "    pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 503\", function () {",
+                  "    pm.response.to.have.status(503);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error AGENDA_NO_DISPONIBLE\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"AGENDA_NO_DISPONIBLE\");",
+                  "});",
+                  "pm.test(\"El detalle sugiere reintentar\", function () {",
+                  "    pm.expect(pm.response.json().detalle.toLowerCase()).to.include(\"intenta\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/reservas con Agenda caido (503)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas"
+              ]
+            },
+            "description": "Requiere Agenda apagado. Se asegura el cupo en Agenda antes de guardar, asi que no queda ninguna reserva guardada.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{cuerpo_reserva}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Estas pruebas necesitan Agenda apagado:",
+                  "//   docker compose stop agenda",
+                  "// y el valor \"si\" en la variable agenda_caida (puedes ponerlo en la",
+                  "// pestana Variables de la coleccion o en un entorno de Postman).",
+                  "// Con Agenda arriba la peticion se omite y la corrida sigue en verde.",
+                  "if (pm.variables.get(\"agenda_caida\") !== \"si\") {",
+                  "    pm.execution.skipRequest();",
+                  "}",
+                  "",
+                  "const cuerpo = {",
+                  "    id_dueno: Number(pm.collectionVariables.get(\"id_dueno\")),",
+                  "    id_bloque: Number(pm.collectionVariables.get(\"id_bloque\")),",
+                  "    mascota_nombre: \"Rex\",",
+                  "    motivo: \"Prueba automatizada\"",
+                  "};",
+                  "pm.collectionVariables.set(\"cuerpo_reserva\", JSON.stringify(cuerpo));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 503\", function () {",
+                  "    pm.response.to.have.status(503);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error AGENDA_NO_DISPONIBLE\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"AGENDA_NO_DISPONIBLE\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /v1/reservas/{id_reserva} con Agenda caido (503)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas/{{id_reserva}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas",
+                "{{id_reserva}}"
+              ]
+            },
+            "description": "Requiere Agenda apagado y una reserva ACTIVA (aun sin cancelar), por eso id_reserva debe apuntar a la reserva que creo la carpeta 4. Esta carpeta va antes de la de cancelacion: al apagar Agenda la reserva sigue activa y no puede quedar en 409."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Estas pruebas necesitan Agenda apagado:",
+                  "//   docker compose stop agenda",
+                  "// y el valor \"si\" en la variable agenda_caida (puedes ponerlo en la",
+                  "// pestana Variables de la coleccion o en un entorno de Postman).",
+                  "// Con Agenda arriba la peticion se omite y la corrida sigue en verde.",
+                  "if (pm.variables.get(\"agenda_caida\") !== \"si\") {",
+                  "    pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 503\", function () {",
+                  "    pm.response.to.have.status(503);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error AGENDA_NO_DISPONIBLE\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"AGENDA_NO_DISPONIBLE\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7 · Reservas: cancelacion",
+      "description": "Cancelar libera el cupo en Agenda. 204, 409 y 404.",
+      "item": [
+        {
+          "name": "DELETE /v1/reservas/{id_reserva} (204)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas/{{id_reserva}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas",
+                "{{id_reserva}}"
+              ]
+            },
+            "description": "Cancela la reserva y libera el cupo en Agenda. Responde 204 sin cuerpo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 204\", function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});",
+                  "pm.test(\"Sin cuerpo de respuesta\", function () {",
+                  "    pm.expect(pm.response.text()).to.eql(\"\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /v1/reservas/{id_reserva} otra vez (409)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas/{{id_reserva}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas",
+                "{{id_reserva}}"
+              ]
+            },
+            "description": "La reserva ya estaba cancelada: conflicto, no error de servidor."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 409\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error YA_CANCELADA\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"YA_CANCELADA\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /v1/reservas/999999 (404)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "description": "API Key de la clínica"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}//v1/reservas/999999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "reservas",
+                "999999"
+              ]
+            },
+            "description": "No existe la reserva que se quiere cancelar."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Estado 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "pm.test(\"Content-Type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "});",
+                  "pm.test(\"Formato de error {error, detalle}\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"detalle\");",
+                  "    pm.expect(b.error).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(b.detalle).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"Codigo de error NO_ENCONTRADO\", function () {",
+                  "    pm.expect(pm.response.json().error).to.eql(\"NO_ENCONTRADO\");",
+                  "});",
+                  "pm.test(\"El detalle es general (no menciona un recurso)\", function () {",
+                  "    const d = pm.response.json().detalle.toLowerCase();",
+                  "    [\"dueno\", \"dueño\", \"reserva\", \"bloque\", \"veterinario\"]",
+                  "        .forEach(function (palabra) {",
+                  "            pm.expect(d).to.not.include(palabra);",
+                  "        });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "clave-secreta-vet-2026",
+      "type": "string"
+    },
+    {
+      "key": "id_dueno",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "id_bloque",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "id_bloque_lleno",
+      "value": "3",
+      "type": "string"
+    },
+    {
+      "key": "id_reserva",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "idempotency_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "nombre_prueba",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cuerpo_reserva",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cuerpo_reserva_lleno",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "agenda_caida",
+      "value": "no",
+      "type": "string"
+    }
+  ]
+}

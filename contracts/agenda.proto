@@ -10,10 +10,10 @@ package agenda.v1;
 // Servicio que administra los veterinarios y sus bloques horarios.
 // Todas las operaciones son de tipo Unary: el cliente envía un
 // mensaje y recibe una única respuesta.
+//
+// Las tres operaciones son exactamente las que consume el cliente de
+// Reservas: no hay ninguna en el contrato que no se use.
 service AgendaService {
-  // Consulta un veterinario y los cupos libres de uno de sus bloques.
-  rpc ConsultarVeterinario (ConsultarVeterinarioRequest) returns (VeterinarioResponse);
-
   // Lista los bloques horarios disponibles, con filtros opcionales.
   rpc ListarBloques (ListarBloquesRequest) returns (ListarBloquesResponse);
 
@@ -22,20 +22,6 @@ service AgendaService {
 
   // Incrementa en 1 el cupo libre de un bloque (liberar al cancelar).
   rpc LiberarCupo (LiberarCupoRequest) returns (LiberarCupoResponse);
-}
-
-message ConsultarVeterinarioRequest {
-  int32 id_veterinario = 1;
-  int32 id_bloque = 2;        // bloque sobre el que se consultan los cupos
-}
-
-message VeterinarioResponse {
-  int32 id_veterinario = 1;
-  string nombre = 2;
-  string especialidad = 3;
-  int32 id_bloque = 4;
-  int32 cupos_libres = 5;
-  bool disponible = 6;        // true si quedan cupos en ese bloque
 }
 
 message ListarBloquesRequest {

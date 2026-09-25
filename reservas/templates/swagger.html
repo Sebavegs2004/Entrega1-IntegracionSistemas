@@ -13,7 +13,7 @@
   <script>
     window.onload = () => {
       SwaggerUIBundle({
-        url: "/openapi.yaml",          // nuestra especificación OpenAPI
+        spec: {{ contrato|tojson }},   // contrato OpenAPI leído por Flask
         dom_id: "#swagger-ui",
         deepLinking: true,
       });
