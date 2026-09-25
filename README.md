@@ -119,7 +119,7 @@ curl -X DELETE http://localhost:5000/v1/reservas/1 -H "X-API-Key: clave-secreta-
 Todos los errores usan el mismo formato, con un código y un detalle:
 
 ```json
-{"error": "NO_ENCONTRADO", "detalle": "El recurso solicitado no existe."}
+{"error": "NO_ENCONTRADO", "detalle": "Recurso no encontrado"}
 ```
 
 ## Estructura
@@ -322,6 +322,14 @@ especificación define un único schema `Error` y cada respuesta apunta a
 distintos (por ejemplo, un 404 puede ser un dueño que no existe, una
 reserva que no existe o una ruta mal escrita), por eso el texto del
 error es general y no menciona un recurso en particular.
+
+**¿Cómo se evita repetir los errores?** Cada código HTTP está escrito una
+sola vez, en su manejador global de `reservas/app.py` (`404`, `405`,
+`415`, `500`, `503`). Las rutas no construyen el JSON: solo llaman a
+`abort(codigo)`, que lanza el error y Flask encamina la respuesta por el
+manejador. Así un `abort(404)` desde `obtener_reserva` y una URL mal
+escrita producen exactamente el mismo cuerpo, sin que las rutas repitan
+el mensaje.
 
 ## Seguridad y pendientes (nota honesta)
 

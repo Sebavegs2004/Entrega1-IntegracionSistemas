@@ -15,7 +15,7 @@ from pathlib import Path
 
 import redis
 import yaml
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, abort, jsonify, render_template, request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 import agenda_client   # nuestro cliente gRPC hacia Agenda
@@ -131,30 +131,14 @@ def cuerpo_json(modelo):
 # Manejadores globales de errores HTTP
 # Todas las respuestas de error usan el mismo formato del contrato
 # REST: {"error": "<CODIGO>", "detalle": "<texto>"}.
-# Flask los usa para los errores que ocurren ANTES de llegar a una
-# ruta (URL inexistente, método incorrecto, cuerpo mal formado,
-# excepción no controlada). Así el JSON siempre viene "vestido" y el
-# consumidor nunca recibe una página HTML por error.
 #
-# Ojo: un mismo código puede tener varias causas (un dueño que no
-# existe, una reserva que no existe o una ruta que no existe), por eso
-# los mensajes son generales y no nombran ningún recurso en particular.
+# Cada código HTTP se escribe UNA sola vez, aquí en su manejador.
+# Las rutas no construyen el JSON: solo llaman a abort(codigo), que
+# lanza el error y Flask encamina la respuesta por el manejador.
+# Gracias a eso, un 404 dice lo mismo en todos los casos posibles
+# (un dueño que no existe, una reserva que no existe, una URL mal
+# escrita) y el consumidor nunca recibe HTML por error.
 # ============================================================
-def no_encontrado():
-    """404 del contrato, reutilizado por todas las rutas y por el
-    manejador global: el mismo código sirve para cualquier recurso
-    que no exista."""
-    return jsonify({"error": "NO_ENCONTRADO",
-                    "detalle": "Recurso no encontrado"}), 404
-
-
-def agenda_no_disponible():
-    """503 del contrato: el servicio interno Agenda no respondió."""
-    return jsonify({"error": "AGENDA_NO_DISPONIBLE",
-                    "detalle": "El servicio de Agenda no está disponible. "
-                               "Intenta de nuevo en un momento."}), 503
-
-
 @app.errorhandler(DatosInvalidos)
 def datos_invalidos(e):
     return jsonify({"error": "DATOS_INVALIDOS",
@@ -170,8 +154,11 @@ def peticion_malformada(e):
 
 
 @app.errorhandler(404)
-def ruta_inexistente(e):
-    return no_encontrado()
+def no_encontrado(e):
+    # Lo lanzan las rutas con abort(404) cuando el recurso no está en
+    # la base, y Flask cuando la URL no coincide con ninguna ruta.
+    return jsonify({"error": "NO_ENCONTRADO",
+                    "detalle": "Recurso no encontrado"}), 404
 
 
 @app.errorhandler(405)
@@ -197,6 +184,15 @@ def error_interno(e):
     return jsonify({"error": "ERROR_INTERNO",
                     "detalle": "Ocurrió un error inesperado "
                                "en el servidor."}), 500
+
+
+@app.errorhandler(503)
+def agenda_no_disponible(e):
+    # Lo lanzan las rutas con abort(503) cuando el cliente gRPC no logra
+    # hablar con Agenda en el plazo de espera.
+    return jsonify({"error": "AGENDA_NO_DISPONIBLE",
+                    "detalle": "El servicio de Agenda no está disponible. "
+                               "Intenta de nuevo en un momento."}), 503
 
 
 # ============================================================
@@ -305,7 +301,7 @@ def obtener_dueno(id_dueno):
     """Devuelve un dueño por su id."""
     duenos = consultar("SELECT * FROM duenos WHERE id_dueno = ?", (id_dueno,))
     if not duenos:
-        return no_encontrado()
+        abort(404)
     return jsonify(duenos[0]), 200
 
 
@@ -327,7 +323,7 @@ def listar_bloques():
     try:
         bloques = agenda_client.listar_bloques()
     except agenda_client.AgendaNoDisponibleError:
-        return agenda_no_disponible()
+        abort(503)
 
     guardar_bloques_cacheados(bloques)
     return jsonify(bloques), 200
@@ -351,13 +347,13 @@ def crear_reserva():
     # 1) El dueño tiene que existir en NUESTRA base.
     if not consultar("SELECT id_dueno FROM duenos WHERE id_dueno = ?",
                      (datos.id_dueno,)):
-        return no_encontrado()
+        abort(404)
 
     # 2) Pedimos el cupo a Agenda (gRPC).
     try:
         resultado = agenda_client.reservar_cupo(datos.id_bloque)
     except agenda_client.AgendaNoDisponibleError:
-        return agenda_no_disponible()
+        abort(503)
 
     if not resultado["exito"]:
         return jsonify({"error": "SIN_CUPO",
@@ -408,7 +404,7 @@ def obtener_reserva(id_reserva):
     reservas = consultar("SELECT * FROM reservas WHERE id_reserva = ?",
                          (id_reserva,))
     if not reservas:
-        return no_encontrado()
+        abort(404)
     datos = reservas[0]
 
     # Enlaces HATEOAS: la respuesta publica las acciones disponibles
@@ -435,7 +431,7 @@ def cancelar_reserva(id_reserva):
     reservas = consultar("SELECT * FROM reservas WHERE id_reserva = ?",
                          (id_reserva,))
     if not reservas:
-        return no_encontrado()
+        abort(404)
     reserva = reservas[0]
     if reserva["estado"] == "cancelada":
         return jsonify({"error": "YA_CANCELADA",
@@ -446,7 +442,7 @@ def cancelar_reserva(id_reserva):
     try:
         agenda_client.liberar_cupo(reserva["id_bloque"])
     except agenda_client.AgendaNoDisponibleError:
-        return agenda_no_disponible()
+        abort(503)
 
     ejecutar("UPDATE reservas SET estado = 'cancelada' WHERE id_reserva = ?",
              (id_reserva,))
