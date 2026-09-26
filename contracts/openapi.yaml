@@ -1,119 +1,361 @@
+# ============================================================
+# Contrato OpenAPI 3.0 de la API pública de Reservas.
+#
+# El servicio interno Agenda se comunica por gRPC (agenda.proto),
+# por eso NO aparece aquí: no tiene endpoints REST.
+#
+# La documentación se publica en GET /v1/docs (Swagger UI), que
+# lee este mismo archivo: no hay una ruta aparte para la
+# especificación.
+#
+# Los schemas de error se nombran por su código HTTP (Error400,
+# Error404, ...), no por el recurso que falló: un mismo 404 puede
+# significar que no existe un dueño, una reserva o una ruta.
+# ============================================================
 openapi: 3.0.3
-info:
-  title: API Reservas - Clínica Veterinaria VidaAnimal
-  version: "1.0"
-servers:
-  - url: http://localhost:5000
 
+info:
+  title: API de Reservas - Clinica Veterinaria VidaAnimal
+  version: 1.0.0
+  description: |
+    Contrato del servicio de reservas, escrito antes de implementarlo.
+    Permite registrar duenos, consultar los bloques horarios y crear
+    reservas. Antes de confirmar una reserva, el cupo se verifica contra
+    el servicio interno Agenda a traves de gRPC.
+
+    Todas las rutas exigen el header X-API-Key, salvo /v1/health.
+
+# URL relativa "/": Swagger UI hace las peticiones contra el mismo
+# host desde el que se abrió la documentación. Así el botón "Try it
+# out" funciona entrando por localhost, por 127.0.0.1 o por la IP de
+# la máquina, sin depender de CORS (Flask no envía ese header).
+servers:
+  - url: /
+    description: Mismo host que esta documentación
+
+# Autenticación: todas las rutas piden el header X-API-Key.
 security:
   - ApiKeyAuth: []
 
 paths:
   /v1/duenos:
     post:
-      summary: Crear dueño de mascota
+      summary: Crear un dueno de mascota
+      operationId: crearDueno
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [nombre, telefono]
-              properties:
-                nombre: { type: string }
-                telefono: { type: string }
-                email: { type: string }
+              $ref: '#/components/schemas/NuevoDueno'
       responses:
-        "201": { description: Dueño creado }
-        "400": { description: Datos inválidos }
-        "401": { description: No autorizado }
+        '201':
+          description: Dueno creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dueno'
+        '400':
+          description: Faltan campos obligatorios o hay campos de mas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error400'
+        '401':
+          description: Falta el header X-API-Key o la clave no coincide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error401'
+        '415':
+          description: El cuerpo no se envio como application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error415'
     get:
-      summary: Listar dueños
+      summary: Listar duenos
+      operationId: listarDuenos
       parameters:
         - name: nombre
           in: query
           required: false
-          schema: { type: string }
+          description: Filtra por nombre (busqueda parcial)
+          schema:
+            type: string
+            example: Juan
       responses:
-        "200": { description: Lista de dueños }
-        "401": { description: No autorizado }
+        '200':
+          description: Lista de duenos (vacia si no hay coincidencias)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Dueno'
+        '401':
+          description: Falta el header X-API-Key o la clave no coincide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error401'
 
-  /v1/duenos/{id}:
+  /v1/duenos/{id_dueno}:
     get:
-      summary: Obtener dueño por id
+      summary: Obtener un dueno por id
+      operationId: obtenerDueno
       parameters:
-        - name: id
+        - name: id_dueno
           in: path
           required: true
-          schema: { type: string }
+          description: Identificador del dueno
+          schema:
+            type: integer
+            minimum: 1
       responses:
-        "200": { description: Dueño encontrado }
-        "404": { description: No encontrado }
-        "401": { description: No autorizado }
+        '200':
+          description: Dueno encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dueno'
+        '401':
+          description: Falta el header X-API-Key o la clave no coincide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error401'
+        '404':
+          description: Recurso no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error404'
+
+  /v1/bloques:
+    get:
+      summary: Listar bloques horarios
+      description: |
+        El servicio de Reservas actua de "fachada": pide los bloques
+        al servicio gRPC Agenda y los devuelve como JSON.
+        La respuesta se guarda en Redis 60 segundos, por eso los
+        cupos pueden demorar un poco en reflejarse.
+      operationId: listarBloques
+      responses:
+        '200':
+          description: Lista de bloques con sus cupos libres
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BloqueHorario'
+        '401':
+          description: Falta el header X-API-Key o la clave no coincide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error401'
+        '503':
+          description: El servicio de Agenda no responde
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error503'
 
   /v1/reservas:
     post:
-      summary: Crear una reserva (verifica disponibilidad contra Agenda vía gRPC)
+      summary: Crear una reserva
+      description: |
+        Primero asegura el cupo en Agenda (gRPC) y, si hay exito,
+        guarda la copia de la cita. Si se repite la misma peticion
+        con la misma clave de idempotencia, se devuelve la reserva
+        ya creada en lugar de crear otra.
+      operationId: crearReserva
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            Clave unica de la peticion. Si se repite, la API
+            responde 200 con la reserva ya creada.
+          schema:
+            type: string
+            example: 7f1c2a9e-0b3d
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [id_dueno, id_veterinario, id_bloque, mascota_nombre]
-              properties:
-                id_dueno: { type: string }
-                id_veterinario: { type: string }
-                id_bloque: { type: string }
-                mascota_nombre: { type: string }
+              $ref: '#/components/schemas/NuevaReserva'
       responses:
-        "201": { description: Reserva creada }
-        "400": { description: Datos inválidos }
-        "401": { description: No autorizado }
-        "404": { description: Dueño no existe }
-        "409": { description: Sin cupo disponible }
-        "503": { description: Agenda no responde }
+        '201':
+          description: Reserva creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reserva'
+        '200':
+          description: La reserva ya existia (se repitio la clave de idempotencia)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reserva'
+        '400':
+          description: Faltan campos obligatorios o hay campos de mas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error400'
+        '401':
+          description: Falta el header X-API-Key o la clave no coincide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error401'
+        '404':
+          description: Recurso no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error404'
+        '409':
+          description: El bloque ya no tiene cupos libres
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error409'
+        '415':
+          description: El cuerpo no se envio como application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error415'
+        '503':
+          description: El servicio de Agenda no responde
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error503'
     get:
       summary: Listar reservas
+      operationId: listarReservas
       parameters:
         - name: id_dueno
           in: query
-          schema: { type: string }
+          required: false
+          description: Filtra por dueno
+          schema:
+            type: integer
+            minimum: 1
         - name: estado
           in: query
-          schema: { type: string, enum: [activa, cancelada] }
-        - name: fecha
-          in: query
-          schema: { type: string }
+          required: false
+          description: Filtra por estado de la reserva
+          schema:
+            type: string
+            enum: [activa, cancelada]
       responses:
-        "200": { description: Lista de reservas }
-        "401": { description: No autorizado }
+        '200':
+          description: Lista de reservas, de la mas reciente a la mas antigua
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Reserva'
+        '401':
+          description: Falta el header X-API-Key o la clave no coincide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error401'
 
-  /v1/reservas/{id}:
+  /v1/reservas/{id_reserva}:
     get:
-      summary: Obtener reserva por id
+      summary: Obtener una reserva por id
+      description: Incluye enlaces HATEOAS en el campo _links
+      operationId: obtenerReserva
       parameters:
-        - name: id
+        - name: id_reserva
           in: path
           required: true
-          schema: { type: string }
+          description: Identificador de la reserva
+          schema:
+            type: integer
+            minimum: 1
       responses:
-        "200": { description: Reserva encontrada }
-        "404": { description: No encontrada }
-        "401": { description: No autorizado }
+        '200':
+          description: Reserva encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reserva'
+        '401':
+          description: Falta el header X-API-Key o la clave no coincide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error401'
+        '404':
+          description: Recurso no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error404'
     delete:
-      summary: Cancelar reserva (libera el cupo en Agenda)
+      summary: Cancelar una reserva
+      description: Cancela la reserva y libera el cupo en Agenda
+      operationId: cancelarReserva
       parameters:
-        - name: id
+        - name: id_reserva
           in: path
           required: true
-          schema: { type: string }
+          description: Identificador de la reserva
+          schema:
+            type: integer
+            minimum: 1
       responses:
-        "204": { description: Cancelada }
-        "404": { description: No encontrada }
-        "409": { description: Ya estaba cancelada }
-        "401": { description: No autorizado }
-        "503": { description: Agenda no responde }
+        '204':
+          description: Reserva cancelada (sin cuerpo)
+        '401':
+          description: Falta el header X-API-Key o la clave no coincide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error401'
+        '404':
+          description: Recurso no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error404'
+        '409':
+          description: La reserva ya estaba cancelada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error409'
+        '503':
+          description: El servicio de Agenda no responde
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error503'
+
+  /v1/health:
+    get:
+      summary: Comprobar que el servicio esta disponible
+      description: Comprobacion de vida, no requiere API Key
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: El servicio esta arriba
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Salud'
 
 components:
   securitySchemes:
@@ -121,3 +363,248 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
+
+  schemas:
+
+    # ---- Cuerpos de las peticiones ----
+    NuevoDueno:
+      type: object
+      required: [nombre, telefono]
+      additionalProperties: false
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          example: Juan Pérez
+        telefono:
+          type: string
+          minLength: 1
+          example: '+56912345678'
+        email:
+          type: string
+          nullable: true
+          example: juan@mail.cl
+
+    NuevaReserva:
+      type: object
+      required: [id_dueno, id_bloque, mascota_nombre]
+      additionalProperties: false
+      properties:
+        id_dueno:
+          type: integer
+          minimum: 1
+          example: 1
+        id_bloque:
+          type: integer
+          minimum: 1
+          description: Bloque a reservar (el id de /v1/bloques)
+          example: 1
+        mascota_nombre:
+          type: string
+          minLength: 1
+          example: Rex
+        motivo:
+          type: string
+          nullable: true
+          example: Control anual
+
+    # ---- Respuestas ----
+    Dueno:
+      type: object
+      required: [id_dueno, nombre, telefono]
+      additionalProperties: false
+      properties:
+        id_dueno:
+          type: integer
+          example: 1
+        nombre:
+          type: string
+          example: Juan Pérez
+        telefono:
+          type: string
+          example: '+56912345678'
+        email:
+          type: string
+          nullable: true
+          example: juan@mail.cl
+
+    BloqueHorario:
+      type: object
+      required:
+        [id, id_veterinario, nombre_veterinario, especialidad,
+         fecha, hora_inicio, hora_fin, cupos_libres]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          description: Es el id_bloque que usa una reserva
+          example: 1
+        id_veterinario:
+          type: integer
+          example: 1
+        nombre_veterinario:
+          type: string
+          example: Dra. Carmen Rojas
+        especialidad:
+          type: string
+          example: Medicina general
+        fecha:
+          type: string
+          description: Formato AAAA-MM-DD
+          example: '2026-09-23'
+        hora_inicio:
+          type: string
+          description: Formato HH:MM
+          example: '09:00'
+        hora_fin:
+          type: string
+          description: Formato HH:MM
+          example: '09:30'
+        cupos_libres:
+          type: integer
+          minimum: 0
+          example: 3
+
+    Reserva:
+      type: object
+      required:
+        [id_reserva, id_dueno, id_bloque, nombre_veterinario, fecha,
+         hora_inicio, mascota_nombre, estado, creada_en]
+      additionalProperties: false
+      properties:
+        id_reserva:
+          type: integer
+          example: 1
+        id_dueno:
+          type: integer
+          example: 1
+        id_bloque:
+          type: integer
+          description: Bloque reservado en Agenda
+          example: 1
+        nombre_veterinario:
+          type: string
+          example: Dra. Carmen Rojas
+        fecha:
+          type: string
+          description: Copia de la fecha que devolvio Agenda (AAAA-MM-DD)
+          example: '2026-09-23'
+        hora_inicio:
+          type: string
+          description: Copia de la hora de inicio que devolvio Agenda (HH:MM)
+          example: '09:00'
+        mascota_nombre:
+          type: string
+          example: Rex
+        motivo:
+          type: string
+          nullable: true
+          example: Control anual
+        estado:
+          type: string
+          enum: [activa, cancelada]
+          example: activa
+        creada_en:
+          type: string
+          description: Fecha y hora de creacion (AAAA-MM-DD AA:MM:SS)
+          example: '2026-09-20 11:30:00'
+        _links:
+          type: object
+          description: Solo aparece en GET /v1/reservas/{id_reserva}
+          required: [self, dueno]
+          properties:
+            self:
+              type: string
+              example: /v1/reservas/1
+            dueno:
+              type: string
+              example: /v1/duenos/1
+            cancelar:
+              type: object
+              description: Solo aparece si la reserva sigue activa
+              required: [href, metodo]
+              properties:
+                href:
+                  type: string
+                  example: /v1/reservas/1
+                metodo:
+                  type: string
+                  example: DELETE
+
+    Salud:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+
+    # ---- Errores ----
+    # Todos los errores tienen la misma forma {"error", "detalle"}.
+    # El nombre del schema dice el codigo HTTP que se devuelve y el
+    # ejemplo, el valor concreto que va en el campo "error".
+    Error400:
+      type: object
+      required: [error, detalle]
+      properties:
+        error:
+          type: string
+          example: DATOS_INVALIDOS
+        detalle:
+          type: string
+          example: 'Revisa los campos obligatorios: nombre, telefono'
+
+    Error401:
+      type: object
+      required: [error, detalle]
+      properties:
+        error:
+          type: string
+          example: NO_AUTORIZADO
+        detalle:
+          type: string
+          example: Falta el header X-API-Key
+
+    Error404:
+      type: object
+      required: [error, detalle]
+      properties:
+        error:
+          type: string
+          example: NO_ENCONTRADO
+        detalle:
+          type: string
+          example: Recurso no encontrado
+
+    Error409:
+      type: object
+      required: [error, detalle]
+      properties:
+        error:
+          type: string
+          example: SIN_CUPO
+        detalle:
+          type: string
+          example: El bloque ya no tiene cupos libres
+
+    Error415:
+      type: object
+      required: [error, detalle]
+      properties:
+        error:
+          type: string
+          example: CONTENIDO_NO_SOPORTADO
+        detalle:
+          type: string
+          example: 'El cuerpo de la peticion debe ser JSON (Content-Type: application/json).'
+
+    Error503:
+      type: object
+      required: [error, detalle]
+      properties:
+        error:
+          type: string
+          example: AGENDA_NO_DISPONIBLE
+        detalle:
+          type: string
+          example: El servicio de Agenda no esta disponible. Intenta de nuevo en un momento.

@@ -1,0 +1,252 @@
+/* ============================================================
+   Estilo de la Clínica Veterinaria VidaAnimal
+   Capa propia sobre Bootstrap 5.
+   Paleta: verde pino (identidad clínica) + papel cálido
+   + salvia (superficies) + ámbar (reservar / cupos).
+   ============================================================ */
+
+:root {
+  --va-pino: #17493a;
+  --va-pino-oscuro: #0e3328;
+  --va-papel: #faf7f0;
+  --va-salvia: #e6eee1;
+  --va-salvia-osc: #d3e0cd;
+  --va-ambar: #e8a33d;
+  --va-ambar-osc: #d18f2b;
+  --va-tinta: #1f2d27;
+  --va-mute: #61736a;
+  --va-linea: #d7ddd3;
+  --va-foco: #2f8069;
+}
+
+body {
+  font-family: "Work Sans", system-ui, sans-serif;
+  background: var(--va-papel);
+  color: var(--va-tinta);
+}
+
+h1, h2, h3 { font-family: "Fraunces", Georgia, serif; }
+
+h1 { font-size: clamp(2.1rem, 4vw, 3.1rem); font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: clamp(1.5rem, 2.5vw, 2rem);  font-weight: 600; }
+h3 { font-size: 1.25rem; font-weight: 500; }
+
+/* ------------------------------------------------------------
+   Barra de navegación
+   ------------------------------------------------------------ */
+.va-navbar { background: var(--va-pino-oscuro); padding-block: .7rem; }
+.va-navbar .nav-link { color: var(--va-salvia); font-size: .95rem; }
+.va-navbar .nav-link:hover { color: #fff; }
+.va-brand {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 1.3rem;
+  color: #fff;
+  display: flex; align-items: center; gap: .55rem;
+}
+.va-paw { color: var(--va-ambar); }
+
+/* ------------------------------------------------------------
+   Hero: identidad + strip de días (el elemento memorable)
+   ------------------------------------------------------------ */
+.va-hero { background: var(--va-pino-oscuro); color: var(--va-papel); }
+.va-hero .va-display { color: #fff; max-width: 17ch; }
+.va-hero-sub { color: var(--va-salvia); font-size: 1.05rem; max-width: 56ch; }
+.va-hero-sub strong { color: #dce9dc; font-weight: 600; }
+
+.va-dias {
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 18px;
+  padding: 1.25rem;
+}
+.va-dias-titulo { font-family: "Fraunces", Georgia, serif; color: #fff; font-size: 1.02rem; }
+.va-dias-nota { color: #9db3a8; font-size: .82rem; }
+.va-dias-lista { display: flex; flex-wrap: wrap; gap: .55rem; }
+
+.va-dia {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: 12px;
+  color: var(--va-papel);
+  font-family: "Work Sans", sans-serif;
+  font-size: .8rem;
+  padding: .5rem .85rem;
+  text-align: left;
+  min-width: 5.6rem;
+}
+.va-dia:hover { border-color: var(--va-ambar); }
+.va-dia .va-dia-cupos {
+  display: block;
+  color: var(--va-ambar);
+  font-size: 1.35rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.va-dia.activo { background: var(--va-ambar); border-color: var(--va-ambar); color: #2b2010; }
+.va-dia.activo .va-dia-cupos { color: #2b2010; }
+
+/* ------------------------------------------------------------
+   Títulos de sección (barra ámbar corta como marcador)
+   ------------------------------------------------------------ */
+.va-titulo-seccion {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  margin-bottom: 1.4rem;
+}
+.va-titulo-seccion::before {
+  content: "";
+  width: 34px;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--va-ambar);
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------
+   Tablas (estilo "libro de citas")
+   ------------------------------------------------------------ */
+.va-tabla {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fff;
+  border: 1px solid var(--va-linea);
+  border-radius: 16px;
+  overflow: hidden;
+  font-size: .95rem;
+}
+.va-tabla thead th {
+  background: var(--va-salvia);
+  color: var(--va-pino);
+  font-weight: 600;
+  font-size: .85rem;
+  letter-spacing: .02em;
+  padding: .85rem 1rem;
+  border-bottom: 1px solid var(--va-salvia-osc);
+  white-space: nowrap;
+}
+.va-tabla tbody td {
+  padding: .85rem 1rem;
+  border-bottom: 1px solid var(--va-linea);
+  vertical-align: middle;
+}
+.va-tabla tbody tr:last-child td { border-bottom: 0; }
+.va-tabla tbody tr:hover { background: #f4f7f1; }
+
+.va-spec { display: block; font-size: .8rem; color: var(--va-mute); }
+.va-cupos { font-variant-numeric: tabular-nums; font-weight: 600; }
+.va-agotado, .va-vacio { color: var(--va-mute); }
+.va-leyenda { color: var(--va-mute); font-size: .82rem; }
+
+/* Estado de una reserva */
+.va-estado {
+  display: inline-block;
+  padding: .25rem .65rem;
+  border-radius: 99px;
+  font-size: .78rem;
+  font-weight: 600;
+}
+.va-estado-activa { background: #e2f0e5; color: #1d6b3a; }
+.va-estado-cancelada { background: #e9e9e4; color: #6b6b66; }
+
+/* ------------------------------------------------------------
+   Botones propios
+   ------------------------------------------------------------ */
+.btn-va-ambar {
+  --bs-btn-bg: var(--va-ambar);
+  --bs-btn-border-color: var(--va-ambar);
+  --bs-btn-color: #2b2010;
+  --bs-btn-hover-bg: var(--va-ambar-osc);
+  --bs-btn-hover-border-color: var(--va-ambar-osc);
+  --bs-btn-hover-color: #1f1808;
+  --bs-btn-active-bg: var(--va-ambar-osc);
+  --bs-btn-active-border-color: var(--va-ambar-osc);
+  --bs-btn-active-color: #1f1808;
+  --bs-btn-disabled-bg: #e9c99a;
+  --bs-btn-disabled-border-color: #e9c99a;
+  font-weight: 600;
+  border-radius: 10px;
+}
+.btn-va-pino {
+  --bs-btn-bg: var(--va-pino);
+  --bs-btn-border-color: var(--va-pino);
+  --bs-btn-color: #fff;
+  --bs-btn-hover-bg: var(--va-pino-oscuro);
+  --bs-btn-hover-border-color: var(--va-pino-oscuro);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-active-bg: var(--va-pino-oscuro);
+  --bs-btn-active-border-color: var(--va-pino-oscuro);
+  --bs-btn-active-color: #fff;
+  font-weight: 600;
+  border-radius: 10px;
+}
+.btn-va-linea {
+  --bs-btn-bg: #fff;
+  --bs-btn-border-color: var(--va-linea);
+  --bs-btn-color: var(--va-tinta);
+  --bs-btn-hover-bg: var(--va-salvia);
+  --bs-btn-hover-border-color: var(--va-salvia-osc);
+  --bs-btn-hover-color: var(--va-tinta);
+  font-weight: 500;
+  border-radius: 10px;
+}
+
+/* Foco visible para teclado (accesibilidad) */
+a:focus-visible, button:focus-visible, .btn:focus-visible,
+.form-control:focus, .form-select:focus {
+  outline: 3px solid var(--va-foco);
+  outline-offset: 2px;
+}
+.form-control, .form-select { border-radius: 10px; border-color: var(--va-linea); }
+.form-control:focus, .form-select:focus {
+  border-color: var(--va-foco);
+  box-shadow: 0 0 0 .2rem rgba(47, 128, 105, .15);
+  outline: none;
+}
+
+/* ------------------------------------------------------------
+   Panel del formulario de reserva
+   ------------------------------------------------------------ */
+.va-panel {
+  background: #fff;
+  border: 1px solid var(--va-linea);
+  border-radius: 18px;
+  padding: 1.5rem;
+}
+.va-bloque-elegido {
+  background: var(--va-salvia);
+  border-radius: 12px;
+  padding: .7rem .95rem;
+  font-size: .9rem;
+  min-height: 2.9rem;
+}
+.va-bloque-elegido.fijo {
+  background: #fdf3e2;
+  border: 1px dashed var(--va-ambar);
+}
+
+/* ------------------------------------------------------------
+   Pie de página
+   ------------------------------------------------------------ */
+.va-footer {
+  border-top: 1px solid var(--va-linea);
+  color: var(--va-mute);
+  font-size: .9rem;
+  padding: 1.6rem 0 2.5rem;
+  margin-top: 2rem;
+}
+.va-enlace-footer { color: var(--va-pino); text-decoration: none; }
+.va-enlace-footer:hover { text-decoration: underline; }
+
+/* ------------------------------------------------------------
+   Única animación de entrada (hero) — respeta reduced-motion
+   ------------------------------------------------------------ */
+@media (prefers-reduced-motion: no-preference) {
+  .va-hero { animation: va-aparecer .6s ease-out; }
+  @keyframes va-aparecer {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: none; }
+  }
+}

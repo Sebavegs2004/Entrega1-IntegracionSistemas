@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VidaAnimal · Agenda y reservas</title>
+  <meta name="description" content="Reserva de horas de la Clínica Veterinaria VidaAnimal">
+
+  <!-- Bootstrap 5 (CDN) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Tipografías: Fraunces (títulos) + Work Sans (interfaz) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Estilos propios (capa sobre Bootstrap) -->
+  <link href="/static/styles.css" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ============ Barra de navegación ============ -->
+  <nav class="navbar navbar-expand navbar-dark va-navbar">
+    <div class="container">
+      <a class="navbar-brand va-brand" href="#inicio">
+        <svg class="va-paw" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="7" cy="6" r="2.1"/><circle cx="12" cy="4.5" r="2.1"/>
+          <circle cx="17" cy="6" r="2.1"/><circle cx="5.3" cy="11" r="2.3"/>
+          <circle cx="18.7" cy="11" r="2.3"/>
+          <path d="M12 10.5c-2.6 0-4.9 2-4.9 4.7 0 1.8 1 3.3 3 3.3 1.1 0 1.3-.4 1.9-.4s.8.4 1.9.4c2 0 3-1.5 3-3.3 0-2.7-2.3-4.7-4.9-4.7z"/>
+        </svg>
+        VidaAnimal
+      </a>
+      <div class="d-flex align-items-center gap-2">
+        <ul class="navbar-nav">
+          <li class="nav-item"><a class="nav-link" href="#agenda">Agenda</a></li>
+          <li class="nav-item"><a class="nav-link" href="#reservas">Reservas</a></li>
+        </ul>
+        <button class="btn btn-va-ambar btn-sm" data-bs-toggle="modal" data-bs-target="#modalDueno">Nuevo dueño</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============ Cabecera (hero) ============ -->
+  <header class="va-hero" id="inicio">
+    <div class="container py-5">
+      <div class="row align-items-end g-4">
+
+        <div class="col-lg-7">
+          <h1 class="va-display mb-3">La hora de tu mascota, en minutos.</h1>
+          <p class="va-hero-sub mb-0">
+            VidaAnimal integra dos sistemas: la <strong>Agenda</strong> (servicio
+            gRPC) guarda los cupos de cada veterinario, y <strong>Reservas</strong>
+            confirma tu cita consultando esos cupos antes de agendar.
+          </p>
+        </div>
+
+        <div class="col-lg-5">
+          <div class="va-dias">
+            <p class="va-dias-titulo mb-3">Cupos libres · próximos días</p>
+            <div class="va-dias-lista" id="dias"></div>
+            <p class="va-dias-nota mb-0 mt-3">Toca un día para filtrar la tabla de abajo.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ Agenda: bloques + formulario ============ -->
+  <main class="container py-5">
+    <section id="agenda">
+      <div class="row g-4">
+
+        <!-- Columna izquierda: tabla de bloques disponibles -->
+        <div class="col-lg-8">
+          <h2 class="va-titulo-seccion">Horas disponibles</h2>
+          <div class="table-responsive">
+            <table class="va-tabla">
+              <thead>
+                <tr>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Hora</th>
+                  <th scope="col">Veterinario</th>
+                  <th scope="col">Cupos</th>
+                  <th scope="col" class="text-end">Reservar</th>
+                </tr>
+              </thead>
+              <tbody id="cuerpoBloques">
+                <tr><td colspan="5" class="text-center va-vacio">Cargando bloques…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="va-leyenda mt-2 mb-0">
+            Los cupos los administra el servicio de Agenda (gRPC) en su propia base de datos.
+          </p>
+        </div>
+
+        <!-- Columna derecha: formulario para agendar -->
+        <div class="col-lg-4">
+          <div class="va-panel sticky-lg-top">
+            <h3 class="mb-3">Agendar hora</h3>
+
+            <div class="mb-3">
+              <label for="duenoSelect" class="form-label">Dueño</label>
+              <div class="d-flex gap-2">
+                <select id="duenoSelect" class="form-select">
+                  <option value="">Cargando dueños…</option>
+                </select>
+                <button type="button" class="btn btn-va-linea flex-shrink-0"
+                        data-bs-toggle="modal" data-bs-target="#modalDueno"
+                        title="Registrar un dueño nuevo">+</button>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="mascotaInput" class="form-label">Nombre de la mascota</label>
+              <input type="text" id="mascotaInput" class="form-control"
+                     placeholder="Ej: Rex" autocomplete="off">
+            </div>
+
+            <div class="mb-3">
+              <label for="motivoInput" class="form-label">Motivo <span class="text-muted">(opcional)</span></label>
+              <input type="text" id="motivoInput" class="form-control"
+                     placeholder="Ej: control anual" autocomplete="off">
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Bloque elegido</label>
+              <p id="bloqueElegido" class="va-bloque-elegido mb-0">
+                Elige un bloque en la tabla de la izquierda.
+              </p>
+            </div>
+
+            <button id="btnReservar" class="btn btn-va-ambar w-100" disabled>Reservar hora</button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ Reservas registradas ============ -->
+    <section id="reservas" class="mt-5 pt-3">
+      <h2 class="va-titulo-seccion">Reservas registradas</h2>
+      <div class="table-responsive">
+        <table class="va-tabla">
+          <thead>
+            <tr>
+              <th scope="col">Mascota</th>
+              <th scope="col">Dueño</th>
+              <th scope="col">Veterinario</th>
+              <th scope="col">Fecha y hora</th>
+              <th scope="col">Estado</th>
+              <th scope="col" class="text-end">Acción</th>
+            </tr>
+          </thead>
+          <tbody id="cuerpoReservas">
+            <tr><td colspan="6" class="text-center va-vacio">Cargando reservas…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ Pie de página ============ -->
+  <footer class="va-footer">
+    <div class="container d-flex flex-wrap justify-content-between gap-2">
+      <span>Clínica Veterinaria VidaAnimal</span>
+      <span class="d-flex gap-3">
+        <a href="/v1/docs" class="va-enlace-footer">Documentación API (Swagger)</a>
+        <span>Integración de Sistemas · Flask + gRPC + SQLite</span>
+      </span>
+    </div>
+  </footer>
+
+  <!-- ============ Modal: registrar dueño ============ -->
+  <div class="modal fade" id="modalDueno" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Registrar dueño</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="duenoNombre" class="form-label">Nombre completo</label>
+            <input type="text" id="duenoNombre" class="form-control" autocomplete="off">
+          </div>
+          <div class="mb-3">
+            <label for="duenoTelefono" class="form-label">Teléfono</label>
+            <input type="text" id="duenoTelefono" class="form-control" autocomplete="off">
+          </div>
+          <div class="mb-3">
+            <label for="duenoEmail" class="form-label">Email <span class="text-muted">(opcional)</span></label>
+            <input type="email" id="duenoEmail" class="form-control" autocomplete="off">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-va-linea" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" id="btnGuardarDueno" class="btn btn-va-pino">Guardar dueño</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contenedor para los avisos (toasts de Bootstrap) -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toasts"></div>
+
+  <!-- Bootstrap JS (para modales y toasts) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- JavaScript propio: consume la API (Vanilla JS) -->
+  <script src="/static/app.js"></script>
+</body>
+</html>

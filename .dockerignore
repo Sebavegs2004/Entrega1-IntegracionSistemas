@@ -1,0 +1,25 @@
+# Contexto de build de las imágenes: aquí no entra nada que las imágenes
+# no necesiten. Así el build es reproducible y el contenedor nunca recibe
+# archivos del host: stubs viejos, .pyc, bases de datos locales, etc.
+
+# Python
+__pycache__/
+*.pyc
+
+# Stubs gRPC: los genera protoc DENTRO de la imagen (ver los Dockerfiles).
+# Los del repositorio serían copias que nadie usa.
+agenda_pb2.py
+agenda_pb2_grpc.py
+
+# Archivos SQLite (en Docker viven dentro de los volúmenes, no aquí)
+data/
+*.db
+
+# Git
+.git/
+.gitignore
+
+# Documentación y pruebas: no se copian a ninguna imagen
+docs/
+postman/
+README.md

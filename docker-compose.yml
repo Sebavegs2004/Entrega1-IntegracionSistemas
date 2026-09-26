@@ -1,35 +1,84 @@
+name: vidaanimal
+
+# ============================================================
+# Clínica Veterinaria VidaAnimal — levantamiento completo
+#
+#   docker compose up --build
+#
+# Servicios:
+#   - agenda          : servicio interno gRPC (sin puertos al host)
+#   - reservas        : API REST + interfaz web (localhost:5000)
+#   - redis_cache     : caché de bloques e idempotencia (sin puertos)
+#
+# Lo único publicado hacia el host es el puerto 5000 de Reservas:
+# Agenda y Redis se usan solo por nombre de servicio, dentro de la
+# red de Docker.
+#
+# No hay contenedores de base de datos: cada servicio usa SQLite
+# (un archivo .db) guardado en su propio volumen Docker
+# (agenda_data y reservas_data), así los datos sobreviven a
+# reinicios y reconstrucciones de la imagen.
+# ============================================================
+
 services:
+
+  # ---------- Servicio interno Agenda (gRPC) ----------
   agenda:
     build:
       context: .
       dockerfile: agenda/Dockerfile
-    container_name: vet-agenda
-    ports:
-      - "50051:50051"
+    container_name: agenda
+    environment:
+      AGENDA_PORT: "50051"
+      DB_PATH: /data/agenda.db
     volumes:
+      # El archivo SQLite vive en el volumen: no se borra al
+      # reiniciar o reconstruir el contenedor.
       - agenda_data:/data
+    # Sin "ports": Agenda es un servicio interno, solo visible en la
+    # red de Docker. Reservas se comunica con él por gRPC.
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',50051))"]
+      test: ["CMD", "python", "-c", "import socket;s=socket.socket();s.settimeout(2);s.connect(('localhost',50051))"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 6
 
+  # ---------- API REST + interfaz web (Flask) ----------
   reservas:
     build:
       context: .
       dockerfile: reservas/Dockerfile
-    container_name: vet-reservas
+    container_name: reservas
     ports:
-      - "5000:5000"
+      - "5000:5000"   # único servicio accesible desde el navegador
     environment:
-      - AGENDA_HOST=agenda
-      - AGENDA_PORT=50051
-      - API_KEY=clave-secreta-vet-2026
+      AGENDA_HOST: agenda
+      AGENDA_PORT: "50051"
+      API_KEY: clave-secreta-vet-2026
+      DB_PATH: /data/reservas.db
+      REDIS_HOST: redis_cache
     volumes:
+      # El archivo SQLite vive en el volumen: no se borra al
+      # reiniciar o reconstruir el contenedor.
       - reservas_data:/data
     depends_on:
       agenda:
         condition: service_healthy
+      redis_cache:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:5000/v1/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  # ---------- Servicio de Caché ----------
+  redis_cache:
+    image: redis:7-alpine
+    container_name: vet-redis
+    # Sin "ports": la caché es interna, como Agenda. Reservas es el
+    # único que la usa y lo hace por el nombre del servicio en la
+    # red de Docker. Desde el host no se puede hablar con ella.
 
 volumes:
   agenda_data:

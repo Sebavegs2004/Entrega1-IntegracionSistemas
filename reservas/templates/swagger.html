@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VidaAnimal · Documentación de la API</title>
+  <!-- Swagger UI desde el CDN (no agrega dependencias al proyecto) -->
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+</head>
+<body style="margin: 0;">
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    window.onload = () => {
+      SwaggerUIBundle({
+        spec: {{ contrato|tojson }},   // contrato OpenAPI leído por Flask
+        dom_id: "#swagger-ui",
+        deepLinking: true,
+      });
+    };
+  </script>
+</body>
+</html>

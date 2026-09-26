@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+
+# Stubs gRPC: los genera protoc al construir la imagen (ver los
+# Dockerfiles). Las copias del repositorio quedarían desactualizadas
+# y nadie las usa.
+agenda_pb2.py
+agenda_pb2_grpc.py
+
+# Archivos SQLite: en Docker viven dentro de los volúmenes
+# (agenda_data y reservas_data), nunca en el repositorio.
+data/
+*.db
