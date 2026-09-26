@@ -270,7 +270,7 @@ cada una y dónde se puede ver en el código, para no tener que buscarlas:
 | **O4** | **Pruebas de contrato** que verifiquen el OpenAPI y el `.proto` | **Parcial** | La validez del OpenAPI se comprueba con un contenedor efímero que corre `openapi-spec-validator` (ver *Qué se verificó*), y la carpeta 0 de la colección de Postman compara la especificación servida en `/v1/docs` con las rutas reales, los nombres de los schemas de error y el header de autenticación. No hay, en cambio, una suite que valide el `.proto` ni que verifique el contrato de forma continua en cada build. |
 | **O5** | **Segundo cliente gRPC** en otro lenguaje | **No implementada** | Todo el consumo de Agenda es desde Python (`reservas/agenda_client.py`). Se descartó por alcance: el `.proto` ya genera stubs para cualquier lenguaje, y agregar un cliente .NET sin uso real no agregaba valor al sistema. |
 
-## Decisiones técnicas (resumen para la defensa)
+## Decisiones técnicas
 
 **¿Por qué gRPC Unary?** Las tres operaciones del `.proto` (listar
 bloques, reservar cupo, liberar cupo) son consultas o actualizaciones
@@ -318,7 +318,7 @@ manejador. Así un `abort(404)` desde `obtener_reserva` y una URL mal
 escrita producen exactamente el mismo cuerpo, sin que las rutas repitan
 el mensaje.
 
-## Seguridad y pendientes (nota honesta)
+## Seguridad y pendientes
 
 - La API Key viaja también en el JavaScript de la interfaz: aceptable
   para un MVP de laboratorio, inviable en producción (allí el navegador
