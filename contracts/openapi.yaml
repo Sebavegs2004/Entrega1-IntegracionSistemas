@@ -25,9 +25,13 @@ info:
 
     Todas las rutas exigen el header X-API-Key, salvo /v1/health.
 
+# URL relativa "/": Swagger UI hace las peticiones contra el mismo
+# host desde el que se abrió la documentación. Así el botón "Try it
+# out" funciona entrando por localhost, por 127.0.0.1 o por la IP de
+# la máquina, sin depender de CORS (Flask no envía ese header).
 servers:
-  - url: http://localhost:5000
-    description: Entorno local
+  - url: /
+    description: Mismo host que esta documentación
 
 # Autenticación: todas las rutas piden el header X-API-Key.
 security:
