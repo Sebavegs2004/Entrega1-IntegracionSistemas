@@ -4,20 +4,7 @@ MVP de integración entre **Reservas** (API REST + interfaz web) y
 **Agenda** (servicio interno gRPC), con **SQLite**, **Redis** y
 **Docker**.
 
-```
-┌──────────────┐   gRPC (Unary)   ┌──────────────┐
-│   Reservas   │ ───────────────▶ │    Agenda    │
-│  Flask + UI  │                  │   gRPC (py)  │
-│  (puerto 5000)│                  │   (interno)  │
-└──────┬───────┘                  └──────┬───────┘
-       │ SQLite: reservas.db              │ SQLite: agenda.db
-       │                                  │
-       │  caché + idempotencia            │
-       └──────────────▶ ┌──────────────┐  │
-                       │  Redis       │  │
-                       │ (contenedor) │◀─┘
-                       └──────────────┘
-```
+![Arquitectura de VidaAnimal](docs/diagrama.png)
 
 Cada servicio tiene **su propia base de datos**; la integración entre
 ellos ocurre solo por gRPC. Las dos bases son **archivos SQLite**
@@ -354,31 +341,17 @@ El curso permite el uso de asistentes de IA con una condición: que se
 declare en el README qué se usó, para qué y qué se verificó. Esta es esa
 declaración.
 
-**Herramienta.** OpenCode, un asistente de código con el que se
-conversó por texto. No se usó ningún otro asistente, ni para el código ni
-para el informe.
+**Herramienta.** OpenCode, un asistente de código con el que se conversó
+por texto durante todo el desarrollo. No se usó ningún otro asistente, ni
+para el código ni para el informe.
 
-**Qué se usó para.** La base del proyecto (el `.proto`, los servicios Flask
-y gRPC, la interfaz web y el esquema MySQL original) la escribieron los
-integrantes. El asistente se usó en la etapa final, sobre esos cimientos,
-para lo siguiente:
-
-| Tarea | Qué hizo concretamente |
-|---|---|
-| Migración de MySQL a SQLite | Reescribir `reservas/db.py` y `agenda/db.py` con `sqlite3`, crear `sql/*.sql` (esquema y datos de ejemplo), quitar `mysql-connector-python`, actualizar `docker-compose.yml` (volúmenes en vez de servidores de base) y los Dockerfiles |
-| Limpieza de `reservas/app.py` | Unificar los códigos de error en uno por estado HTTP, agregar el manejador de 415, documentar las funciones, dejar el manejo de Agenda en un solo camino y sacar los `if` de validación a mano: los cuerpos se validan con modelos de Pydantic (`reservas/app.py`) |
-| Contrato OpenAPI | Reescribir `contracts/openapi.yaml`: declarar los cuerpos de las peticiones como schemas (`NuevoDueno`, `NuevaReserva`), un schema de error por código HTTP (`Error400`, `Error401`, `Error404`, `Error409`, `Error415`, `Error503`) y generalizar el 404 a "recurso no encontrado" |
-| Ruta de la documentación | Swagger UI en `/v1/docs`, que lee `contracts/openapi.yaml` y lo muestra embebido: se eliminó la ruta `/openapi.yaml` y con ella la segunda copia del contrato |
-| Rutas de archivos | Dejar el código con una sola ruta de trabajo: el proyecto es 100 % Docker y no quedó ninguna opción de ejecución local |
-| Pruebas | Generar la colección de Postman con sus aserciones por estado HTTP |
-| Documentación | Redactar los cuatro ADR de `docs/adr/` y esta declaración |
-
-**Qué NO hizo el asistente, y es del equipo.** El contrato `.proto`, el
-experimento de la Competencia 6 (con su diseño, las mediciones y las
-conclusiones), el informe, el video y la decisión de qué alternativas
-descartar en cada ADR: eso se fundamentó y se escribió en el equipo. Del
-mismo modo, **ningún integrante puede decir que no revisó** el código que
-el asistente escribió: la defensa pregunta por cualquier línea.
+**Qué se usó.** Casi todo el código lo generó el asistente de IA.
+Parcialmente hicieron los integrantes solo tres archivos:
+`contracts/agenda.proto`, `contracts/openapi.yaml` y una parte de
+`reservas/app.py`. Todo lo demás es del asistente: los dos servicios, las
+bases de datos, los archivos `sql/`, `docker-compose.yml`, los
+`Dockerfile`, la interfaz web, la colección de Postman, los cuatro ADR y
+el `informe.tex`.
 
 **Qué se verificó, y cómo se repite.** Cada cambio se comprobó contra los
 contenedores reales, no solo por lectura:
