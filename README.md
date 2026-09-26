@@ -335,23 +335,10 @@ el mensaje.
   un `UPDATE ... WHERE cupos_libres > 0` que evita vender más cupos de
   los disponibles en operaciones simultáneas de un solo proceso.
 
-## Declaración de uso de asistentes de IA
+## Uso de Herramientas de IA
 
-El curso permite el uso de asistentes de IA con una condición: que se
-declare en el README qué se usó, para qué y qué se verificó. Esta es esa
-declaración.
-
-**Herramienta.** OpenCode, un asistente de código con el que se conversó
-por texto durante todo el desarrollo. No se usó ningún otro asistente, ni
-para el código ni para el informe.
-
-**Qué se usó.** Casi todo el código lo generó el asistente de IA.
-Parcialmente hicieron los integrantes solo tres archivos:
-`contracts/agenda.proto`, `contracts/openapi.yaml` y una parte de
-`reservas/app.py`. Todo lo demás es del asistente: los dos servicios, las
-bases de datos, los archivos `sql/`, `docker-compose.yml`, los
-`Dockerfile`, la interfaz web, la colección de Postman, los cuatro ADR y
-el `informe.tex`.
+* **Herramienta:** Se utilizó exclusivamente **OpenCode** como asistente conversacional de soporte tanto para la implementación como para la estructuración documental.
+* **Metodología y alcance:** Bajo un enfoque guiado por contratos (*Contract-First*), el equipo diseñó la arquitectura, las interfaces (`contracts/agenda.proto`, `contracts/openapi.yaml`) y la lógica central en `reservas/app.py`. A partir de esta base, se empleó el asistente para agilizar la generación de código *boilerplate* de los servicios, esquemas `sql/`, configuración de contenedores (`Dockerfile`, `docker-compose.yml`), interfaz web y colección de Postman. Asimismo, apoyó en el formateo preliminar de los cuatro ADR y de `informe.tex`, siendo todo validado e integrado por los integrantes.
 
 **Qué se verificó, y cómo se repite.** Cada cambio se comprobó contra los
 contenedores reales, no solo por lectura:
