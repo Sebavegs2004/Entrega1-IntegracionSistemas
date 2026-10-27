@@ -55,6 +55,35 @@ services:
   redis_cache:
     image: redis:7-alpine
 
+  # ---------- Pruebas de contrato ----------
+  tests:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile
+    environment:
+      API_BASE: http://reservas:5000
+      API_KEY: ${API_KEY}
+      DB_PATH: /data/reservas.db
+    depends_on:
+      reservas:
+        condition: service_healthy
+      agenda:
+        condition: service_healthy
+
+  # ---------- Segundo cliente gRPC (.NET) ----------
+  cliente-dotnet:
+    build:
+      context: .
+      dockerfile: cliente-dotnet/Dockerfile
+    environment:
+      AGENDA_HOST: agenda
+      AGENDA_PORT: "50051"
+    profiles:
+      - cliente
+    depends_on:
+      agenda:
+        condition: service_healthy
+
 volumes:
   agenda_data:
   reservas_data:
