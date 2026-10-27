@@ -6,7 +6,7 @@
 // API Key de escritura. Configúrala antes de usar la interfaz (ver README).
 // El navegador no lee variables de entorno del servidor, por lo que este
 // valor debe definirse manualmente en este archivo o solicitarse al usuario.
-const API_KEY = "";
+const API_KEY = "mi-clave-secreta-123";
 const $ = (sel) => document.querySelector(sel);
 
 // Estado de la aplicación (todo se vuelve a cargar desde la API)

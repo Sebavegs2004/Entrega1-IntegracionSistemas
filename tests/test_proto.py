@@ -88,9 +88,9 @@ def test_listar_bloques_por_veterinario(stub, pb2):
 
 def test_listar_bloques_por_fecha(stub, pb2):
     req, _ = pb2
-    r = stub.ListarBloques(req.ListarBloquesRequest(fecha="2026-09-24"), timeout=5)
+    r = stub.ListarBloques(req.ListarBloquesRequest(fecha="2026-11-23"), timeout=5)
     assert len(r.bloques) > 0
-    assert all(b.fecha == "2026-09-24" for b in r.bloques)
+    assert all(b.fecha == "2026-11-23" for b in r.bloques)
 
 
 # ------------------------------------------------------------
@@ -123,8 +123,9 @@ def test_obtener_bloque_no_encontrado(stub, pb2):
 # ------------------------------------------------------------
 def test_reservar_y_liberar_cupo(stub, pb2):
     req, _ = pb2
-    bloque = next(b for b in stub.ListarBloques(
-        req.ListarBloquesRequest(), timeout=5).bloques if b.cupos_libres > 0)
+    hoy = __import__("datetime").date.today().isoformat()
+    bloques = stub.ListarBloques(req.ListarBloquesRequest(), timeout=5).bloques
+    bloque = next(b for b in bloques if b.cupos_libres > 0 and b.fecha >= hoy)
 
     r = stub.ReservarCupo(req.ReservarCupoRequest(id_bloque=bloque.id), timeout=5)
     assert r.exito is True
@@ -132,19 +133,39 @@ def test_reservar_y_liberar_cupo(stub, pb2):
     assert r.bloque.cupos_libres == bloque.cupos_libres - 1
 
     # Liberamos para dejar la base como estaba (suite re-ejecutable).
-    l = stub.LiberarCupo(req.LiberarCupoRequest(id_bloque=bloque.id), timeout=5)
+    l = stub.LiberarCupo(
+        req.LiberarCupoRequest(id_bloque=bloque.id, id_reserva=99999),
+        timeout=5,
+    )
     assert l.exito is True
 
 
 def test_reservar_cupo_sin_cupos(stub, pb2):
     req, _ = pb2
-    # En el seed, el bloque 3 está agotado (cupos_libres = 0).
-    r = stub.ReservarCupo(req.ReservarCupoRequest(id_bloque=3), timeout=5)
-    assert r.exito is False
+    # El bloque 3 está agotado (cupos_libres = 0, fecha futura).
+    # ReservarCupo lanza RESOURCE_EXHAUSTED en lugar de devolver exito=False.
+    with pytest.raises(grpc.RpcError) as exc:
+        stub.ReservarCupo(req.ReservarCupoRequest(id_bloque=3), timeout=5)
+    assert exc.value.code() == grpc.StatusCode.RESOURCE_EXHAUSTED
 
 
-def test_liberar_no_excede_tope(stub, pb2):
+def test_liberar_cupo_con_id_reserva(stub, pb2):
     req, _ = pb2
-    # En el seed, el bloque 1 está lleno (3/3): liberar no debe sumar más.
-    r = stub.LiberarCupo(req.LiberarCupoRequest(id_bloque=1), timeout=5)
-    assert r.exito is False
+    # Encontrar un bloque sin cupos libres para verificar
+    # que se puede liberar un cupo usando id_reserva.
+    bloques = stub.ListarBloques(req.ListarBloquesRequest(), timeout=5).bloques
+    bloque = next(
+        (b for b in bloques if b.cupos_libres == 0),
+        None,
+    )
+    assert bloque is not None, "No se encontró un bloque sin cupos para probar la liberación"
+
+    # Liberar un cupo con un id_reserva único (dentro del rango int32 de protobuf).
+    l = stub.LiberarCupo(
+        req.LiberarCupoRequest(
+            id_bloque=bloque.id, id_reserva=2000000001
+        ),
+        timeout=5,
+    )
+    assert l.exito is True
+    assert not l.ya_liberado

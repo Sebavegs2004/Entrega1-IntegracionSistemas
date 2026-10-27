@@ -55,10 +55,23 @@ def validar_contra_schema(instancia, schema, spec):
     validator.validate(instancia)
 
 
+def _normalizar_path(camino):
+    """Normaliza un path para comparar ignorando nombres de parámetros:
+    /v1/duenos/{id_dueno} -> /v1/duenos/{id}"""
+    import re
+    return re.sub(r"\{[^}]+\}", "{id}", camino)
+
+
 def obtener_schema(spec, path, metodo, status):
-    """Devuelve el schema JSON de una respuesta documentada en la spec."""
-    return (spec["paths"][path][metodo]["responses"][status]
-            ["content"]["application/json"]["schema"])
+    """Devuelve el schema JSON de una respuesta documentada en la spec.
+    Busca el path normalizando los nombres de los parámetros de ruta."""
+    path_normalizado = _normalizar_path(path)
+    for camino_espec, item in spec["paths"].items():
+        if _normalizar_path(camino_espec) == path_normalizado:
+            return (item[metodo]["responses"][status]
+                    ["content"]["application/json"]["schema"])
+    raise KeyError(f"Path no encontrado en la spec: {path} "
+                   f"(normalizado: {path_normalizado})")
 
 
 def _conexion_db():

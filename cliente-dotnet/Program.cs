@@ -122,11 +122,13 @@ else
         Console.WriteLine($"      cupos después de reservar: {reserva.Bloque.CuposLibres} " +
                           $"(bajó 1 en la base del servidor Python)");
 
+    var idReservaDemo = 12345;   // id de reserva de ejemplo para probar idempotencia
     var libera = await cliente.LiberarCupoAsync(
-        new LiberarCupoRequest { IdBloque = bloqueElegido.Id }, opciones);
+        new LiberarCupoRequest { IdBloque = bloqueElegido.Id, IdReserva = idReservaDemo }, opciones);
     Console.WriteLine($"   -> LiberarCupo: exito={libera.Exito}  " +
-                      $"mensaje=\"{libera.Mensaje}\" — cupo restaurado, " +
-                      "la base queda como estaba.");
+                      $"mensaje=\"{libera.Mensaje}\"  " +
+                      $"ya_liberado={libera.YaLiberado}  " +
+                      "— cupo restaurado, la base queda como está.");
 }
 
 // ------------------------------------------------------------- CIERRE

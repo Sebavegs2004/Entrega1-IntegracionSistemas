@@ -12,3 +12,10 @@ agenda_pb2_grpc.py
 # (agenda_data y reservas_data), nunca en el repositorio.
 data/
 *.db
+
+# Variables de entorno: nunca subir claves al repositorio.
+# Copia .env.example a .env y ajusta las claves localmente.
+.env
+
+# Paquetes de instalación descargados (no pertenecen al repo).
+*.rpm
