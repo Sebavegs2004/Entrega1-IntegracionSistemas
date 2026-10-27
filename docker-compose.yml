@@ -4,20 +4,6 @@ name: vidaanimal
 # Clínica Veterinaria VidaAnimal — levantamiento completo
 #
 #   docker compose up --build
-#
-# Servicios:
-#   - agenda          : servicio interno gRPC (sin puertos al host)
-#   - reservas        : API REST + interfaz web (localhost:5000)
-#   - redis_cache     : caché de bloques e idempotencia (sin puertos)
-#
-# Lo único publicado hacia el host es el puerto 5000 de Reservas:
-# Agenda y Redis se usan solo por nombre de servicio, dentro de la
-# red de Docker.
-#
-# No hay contenedores de base de datos: cada servicio usa SQLite
-# (un archivo .db) guardado en su propio volumen Docker
-# (agenda_data y reservas_data), así los datos sobreviven a
-# reinicios y reconstrucciones de la imagen.
 # ============================================================
 
 services:
@@ -27,16 +13,11 @@ services:
     build:
       context: .
       dockerfile: agenda/Dockerfile
-    container_name: agenda
     environment:
       AGENDA_PORT: "50051"
       DB_PATH: /data/agenda.db
     volumes:
-      # El archivo SQLite vive en el volumen: no se borra al
-      # reiniciar o reconstruir el contenedor.
       - agenda_data:/data
-    # Sin "ports": Agenda es un servicio interno, solo visible en la
-    # red de Docker. Reservas se comunica con él por gRPC.
     healthcheck:
       test: ["CMD", "python", "-c", "import socket;s=socket.socket();s.settimeout(2);s.connect(('localhost',50051))"]
       interval: 5s
@@ -48,18 +29,16 @@ services:
     build:
       context: .
       dockerfile: reservas/Dockerfile
-    container_name: reservas
     ports:
-      - "5000:5000"   # único servicio accesible desde el navegador
+      - "5000:5000"
     environment:
       AGENDA_HOST: agenda
       AGENDA_PORT: "50051"
-      API_KEY: clave-secreta-vet-2026
+      API_KEY: ${API_KEY:-clave-secreta-vet-2026}
+      API_KEY_LECTURA: ${API_KEY_LECTURA:-clave-lectura-vet-2026}
       DB_PATH: /data/reservas.db
       REDIS_HOST: redis_cache
     volumes:
-      # El archivo SQLite vive en el volumen: no se borra al
-      # reiniciar o reconstruir el contenedor.
       - reservas_data:/data
     depends_on:
       agenda:
@@ -75,10 +54,6 @@ services:
   # ---------- Servicio de Caché ----------
   redis_cache:
     image: redis:7-alpine
-    container_name: vet-redis
-    # Sin "ports": la caché es interna, como Agenda. Reservas es el
-    # único que la usa y lo hace por el nombre del servicio en la
-    # red de Docker. Desde el host no se puede hablar con ella.
 
 volumes:
   agenda_data:

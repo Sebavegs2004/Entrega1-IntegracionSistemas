@@ -1,17 +1,3 @@
-# ============================================================
-# Contrato OpenAPI 3.0 de la API pública de Reservas.
-#
-# El servicio interno Agenda se comunica por gRPC (agenda.proto),
-# por eso NO aparece aquí: no tiene endpoints REST.
-#
-# La documentación se publica en GET /v1/docs (Swagger UI), que
-# lee este mismo archivo: no hay una ruta aparte para la
-# especificación.
-#
-# Los schemas de error se nombran por su código HTTP (Error400,
-# Error404, ...), no por el recurso que falló: un mismo 404 puede
-# significar que no existe un dueño, una reserva o una ruta.
-# ============================================================
 openapi: 3.0.3
 
 info:
@@ -24,16 +10,12 @@ info:
     el servicio interno Agenda a traves de gRPC.
 
     Todas las rutas exigen el header X-API-Key, salvo /v1/health.
+    Existen dos roles de clave: lectura (GET) y escritura (POST/DELETE).
 
-# URL relativa "/": Swagger UI hace las peticiones contra el mismo
-# host desde el que se abrió la documentación. Así el botón "Try it
-# out" funciona entrando por localhost, por 127.0.0.1 o por la IP de
-# la máquina, sin depender de CORS (Flask no envía ese header).
 servers:
   - url: /
     description: Mismo host que esta documentación
 
-# Autenticación: todas las rutas piden el header X-API-Key.
 security:
   - ApiKeyAuth: []
 
@@ -56,7 +38,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Dueno'
         '400':
-          description: Faltan campos obligatorios o hay campos de mas
+          description: Faltan campos obligatorios, email invalido o hay campos de mas
           content:
             application/json:
               schema:
@@ -67,6 +49,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error401'
+        '403':
+          description: La API Key solo tiene permisos de lectura
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error403'
         '415':
           description: El cuerpo no se envio como application/json
           content:
@@ -138,8 +126,7 @@ paths:
       description: |
         El servicio de Reservas actua de "fachada": pide los bloques
         al servicio gRPC Agenda y los devuelve como JSON.
-        La respuesta se guarda en Redis 60 segundos, por eso los
-        cupos pueden demorar un poco en reflejarse.
+        La respuesta se guarda en Redis 60 segundos.
       operationId: listarBloques
       responses:
         '200':
@@ -158,6 +145,61 @@ paths:
                 $ref: '#/components/schemas/Error401'
         '503':
           description: El servicio de Agenda no responde
+          headers:
+            Retry-After:
+              description: Segundos sugeridos antes de reintentar
+              schema:
+                type: integer
+                example: 5
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error503'
+        '504':
+          description: El servicio de Agenda excedio el tiempo limite
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error504'
+
+  /v1/bloques/{id_bloque}:
+    get:
+      summary: Consultar un veterinario y sus cupos libres en un bloque
+      operationId: obtenerBloque
+      parameters:
+        - name: id_bloque
+          in: path
+          required: true
+          description: Identificador del bloque horario
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Datos del bloque horario y su veterinario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BloqueHorario'
+        '401':
+          description: Falta el header X-API-Key o la clave no coincide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error401'
+        '404':
+          description: El bloque horario no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error404'
+        '503':
+          description: El servicio de Agenda no responde
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                example: 5
           content:
             application/json:
               schema:
@@ -167,18 +209,15 @@ paths:
     post:
       summary: Crear una reserva
       description: |
-        Primero asegura el cupo en Agenda (gRPC) y, si hay exito,
-        guarda la copia de la cita. Si se repite la misma peticion
-        con la misma clave de idempotencia, se devuelve la reserva
-        ya creada en lugar de crear otra.
+        Asegura la clave de idempotencia en Redis (SET NX), verifica el cupo
+        en Agenda (gRPC) y guarda la cita. Si vence el timeout de Agenda,
+        compensa liberando el cupo y responde 504.
       operationId: crearReserva
       parameters:
         - name: Idempotency-Key
           in: header
           required: false
-          description: |
-            Clave unica de la peticion. Si se repite, la API
-            responde 200 con la reserva ya creada.
+          description: Clave unica de la peticion asociada al cuerpo enviado.
           schema:
             type: string
             example: 7f1c2a9e-0b3d
@@ -196,7 +235,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Reserva'
         '200':
-          description: La reserva ya existia (se repitio la clave de idempotencia)
+          description: La reserva ya existia (se repitio la misma clave y cuerpo)
           content:
             application/json:
               schema:
@@ -213,14 +252,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error401'
+        '403':
+          description: La API Key solo tiene permisos de lectura
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error403'
         '404':
-          description: Recurso no encontrado
+          description: Dueno o bloque horario no encontrado
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error404'
         '409':
-          description: El bloque ya no tiene cupos libres
+          description: El bloque ya no tiene cupos libres o hay una peticion identica en curso
           content:
             application/json:
               schema:
@@ -231,12 +276,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error415'
+        '422':
+          description: Bloque en fecha pasada o Idempotency-Key reutilizada con otro cuerpo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error422'
         '503':
           description: El servicio de Agenda no responde
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                example: 5
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error503'
+        '504':
+          description: Timeout hablando con Agenda (operacion compensada)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error504'
     get:
       summary: Listar reservas
       operationId: listarReservas
@@ -305,7 +367,7 @@ paths:
                 $ref: '#/components/schemas/Error404'
     delete:
       summary: Cancelar una reserva
-      description: Cancela la reserva y libera el cupo en Agenda
+      description: Cancela la reserva atomicamente y libera el cupo en Agenda
       operationId: cancelarReserva
       parameters:
         - name: id_reserva
@@ -324,6 +386,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error401'
+        '403':
+          description: La API Key solo tiene permisos de lectura
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error403'
         '404':
           description: Recurso no encontrado
           content:
@@ -338,10 +406,21 @@ paths:
                 $ref: '#/components/schemas/Error409'
         '503':
           description: El servicio de Agenda no responde
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                example: 5
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error503'
+        '504':
+          description: Timeout hablando con Agenda (cancelacion revertida)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error504'
 
   /v1/health:
     get:
@@ -365,8 +444,6 @@ components:
       name: X-API-Key
 
   schemas:
-
-    # ---- Cuerpos de las peticiones ----
     NuevoDueno:
       type: object
       required: [nombre, telefono]
@@ -382,6 +459,7 @@ components:
           example: '+56912345678'
         email:
           type: string
+          format: email
           nullable: true
           example: juan@mail.cl
 
@@ -408,7 +486,6 @@ components:
           nullable: true
           example: Control anual
 
-    # ---- Respuestas ----
     Dueno:
       type: object
       required: [id_dueno, nombre, telefono]
@@ -425,6 +502,7 @@ components:
           example: '+56912345678'
         email:
           type: string
+          format: email
           nullable: true
           example: juan@mail.cl
 
@@ -451,7 +529,7 @@ components:
         fecha:
           type: string
           description: Formato AAAA-MM-DD
-          example: '2026-09-23'
+          example: '2026-11-23'
         hora_inicio:
           type: string
           description: Formato HH:MM
@@ -488,7 +566,7 @@ components:
         fecha:
           type: string
           description: Copia de la fecha que devolvio Agenda (AAAA-MM-DD)
-          example: '2026-09-23'
+          example: '2026-11-23'
         hora_inicio:
           type: string
           description: Copia de la hora de inicio que devolvio Agenda (HH:MM)
@@ -506,8 +584,8 @@ components:
           example: activa
         creada_en:
           type: string
-          description: Fecha y hora de creacion (AAAA-MM-DD AA:MM:SS)
-          example: '2026-09-20 11:30:00'
+          description: Fecha y hora de creacion (AAAA-MM-DD HH:MM:SS)
+          example: '2026-10-26 11:30:00'
         _links:
           type: object
           description: Solo aparece en GET /v1/reservas/{id_reserva}
@@ -539,10 +617,6 @@ components:
           type: string
           example: ok
 
-    # ---- Errores ----
-    # Todos los errores tienen la misma forma {"error", "detalle"}.
-    # El nombre del schema dice el codigo HTTP que se devuelve y el
-    # ejemplo, el valor concreto que va en el campo "error".
     Error400:
       type: object
       required: [error, detalle]
@@ -552,7 +626,7 @@ components:
           example: DATOS_INVALIDOS
         detalle:
           type: string
-          example: 'Revisa los campos obligatorios: nombre, telefono'
+          example: 'Datos inválidos o mal formados. Revisa los campos: nombre, telefono'
 
     Error401:
       type: object
@@ -564,6 +638,17 @@ components:
         detalle:
           type: string
           example: Falta el header X-API-Key
+
+    Error403:
+      type: object
+      required: [error, detalle]
+      properties:
+        error:
+          type: string
+          example: PROHIBIDO
+        detalle:
+          type: string
+          example: La API Key proporcionada solo tiene permisos de lectura
 
     Error404:
       type: object
@@ -598,6 +683,17 @@ components:
           type: string
           example: 'El cuerpo de la peticion debe ser JSON (Content-Type: application/json).'
 
+    Error422:
+      type: object
+      required: [error, detalle]
+      properties:
+        error:
+          type: string
+          example: REGLA_NEGOCIO
+        detalle:
+          type: string
+          example: No se puede reservar en un bloque con fecha pasada
+
     Error503:
       type: object
       required: [error, detalle]
@@ -608,3 +704,14 @@ components:
         detalle:
           type: string
           example: El servicio de Agenda no esta disponible. Intenta de nuevo en un momento.
+
+    Error504:
+      type: object
+      required: [error, detalle]
+      properties:
+        error:
+          type: string
+          example: AGENDA_TIMEOUT
+        detalle:
+          type: string
+          example: El servicio de Agenda tardó demasiado en responder y la operación fue revertida por seguridad.

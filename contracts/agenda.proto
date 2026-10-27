@@ -2,22 +2,27 @@
 // Contrato del servicio interno Agenda (gRPC)
 // Fuente única de verdad: cualquier cambio se hace aquí y se
 // regeneran los stubs de Python (Docker lo hace al construir).
+//
+// Reglas de evolución y compatibilidad (ADR-003):
+// 1. Nunca reutilizar ni cambiar el número de etiqueta de un campo.
+// 2. Si se elimina un campo en el futuro, declarar su número y nombre
+//    con 'reserved' para evitar colisiones en clientes antiguos.
+// 3. Campos nuevos deben ser opcionales (valores por defecto en proto3).
 // ============================================================
 syntax = "proto3";
 
 package agenda.v1;
 
-// Servicio que administra los veterinarios y sus bloques horarios.
-// Todas las operaciones son de tipo Unary: el cliente envía un
-// mensaje y recibe una única respuesta.
-//
-// Las tres operaciones son exactamente las que consume el cliente de
-// Reservas: no hay ninguna en el contrato que no se use.
 service AgendaService {
   // Lista los bloques horarios disponibles, con filtros opcionales.
   rpc ListarBloques (ListarBloquesRequest) returns (ListarBloquesResponse);
 
+  // Consulta un bloque específico con los datos de su veterinario y cupos libres.
+  rpc ObtenerBloque (ObtenerBloqueRequest) returns (BloqueHorario);
+
   // Decrementa en 1 el cupo libre de un bloque (reservar).
+  // Errores canónicos: NOT_FOUND (bloque no existe), FAILED_PRECONDITION (fecha pasada),
+  // RESOURCE_EXHAUSTED (sin cupos).
   rpc ReservarCupo (ReservarCupoRequest) returns (ReservarCupoResponse);
 
   // Incrementa en 1 el cupo libre de un bloque (liberar al cancelar).
@@ -27,6 +32,10 @@ service AgendaService {
 message ListarBloquesRequest {
   int32 id_veterinario = 1;   // 0 = todos
   string fecha = 2;           // "YYYY-MM-DD" o "" = todas
+}
+
+message ObtenerBloqueRequest {
+  int32 id_bloque = 1;
 }
 
 message BloqueHorario {
