@@ -65,9 +65,11 @@ message ReservarCupoResponse {
 
 message LiberarCupoRequest {
   int32 id_bloque = 1;
+  int32 id_reserva = 2;   // id de la reserva que libera el cupo (idempotencia)
 }
 
 message LiberarCupoResponse {
   bool exito = 1;
   string mensaje = 2;
+  bool ya_liberado = 3;   // true si el id_reserva ya se había liberado antes
 }

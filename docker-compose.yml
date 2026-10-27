@@ -34,8 +34,8 @@ services:
     environment:
       AGENDA_HOST: agenda
       AGENDA_PORT: "50051"
-      API_KEY: ${API_KEY:-clave-secreta-vet-2026}
-      API_KEY_LECTURA: ${API_KEY_LECTURA:-clave-lectura-vet-2026}
+      API_KEY: ${API_KEY}
+      API_KEY_LECTURA: ${API_KEY_LECTURA}
       DB_PATH: /data/reservas.db
       REDIS_HOST: redis_cache
     volumes:

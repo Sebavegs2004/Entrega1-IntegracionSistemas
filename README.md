@@ -64,7 +64,8 @@ docker compose down -v && docker compose up --build   # desde datos limpios
 ## Probar la API
 
 Puede probar los endpoints desde Swagger UI, use el botón **Authorize**
-y pega la clave `clave-secreta-vet-2026` (se envía como header `X-API-Key`).
+y envía la header `X-API-Key` con la clave definida en la variable de
+entorno `API_KEY` (ver archivo `.env.example`).
 
 ## Estructura
 

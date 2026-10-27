@@ -481,7 +481,7 @@ def cancelar_reserva(id_reserva):
     # 2) Solo el hilo que modificó la fila libera el cupo en Agenda.
     # Si Agenda falla, revertimos el estado local a 'activa' para mantener consistencia.
     try:
-        agenda_client.liberar_cupo(reserva["id_bloque"])
+        agenda_client.liberar_cupo(reserva["id_bloque"], reserva["id_reserva"])
     except agenda_client.AgendaTimeoutError:
         actualizar("UPDATE reservas SET estado = 'activa' WHERE id_reserva = ?", (id_reserva,))
         abort(504)

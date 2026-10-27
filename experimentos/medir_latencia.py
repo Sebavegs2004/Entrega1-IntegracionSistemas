@@ -12,7 +12,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 
 BASE = os.environ.get("API_BASE", "http://localhost:5000")
-API_KEY = os.environ.get("API_KEY", "clave-secreta-vet-2026")
+API_KEY = os.environ.get("API_KEY")
+if not API_KEY:
+    raise SystemExit("Falta la variable de entorno API_KEY")
 RUTA = "/v1/bloques"
 DEL_CMD = ["docker", "compose", "exec", "redis_cache",
            "redis-cli", "del", "cache:bloques"]

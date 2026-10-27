@@ -6,6 +6,7 @@
 # (en docker-compose no tiene puertos públicos).
 # ============================================================
 import os
+import sqlite3
 from concurrent import futures
 from datetime import date
 
@@ -140,7 +141,7 @@ class AgendaServiceServicer(agenda_pb2_grpc.AgendaServiceServicer):
         )
 
     # -----------------------------------------------
-    # 4) Liberar un cupo (suma 1 hasta el tope)
+    # 4) Liberar un cupo (idempotente por id_reserva)
     # -----------------------------------------------
     def LiberarCupo(self, request, context):
         conn = get_conn()
@@ -155,23 +156,53 @@ class AgendaServiceServicer(agenda_pb2_grpc.AgendaServiceServicer):
                     f"El bloque horario {request.id_bloque} no existe"
                 )
 
-            cur = conn.execute(
-                """UPDATE bloques_horarios
-                   SET cupos_libres = cupos_libres + 1
-                   WHERE id_bloque = ? AND cupos_libres < cupos_totales""",
-                (request.id_bloque,),
-            )
-            if cur.rowcount == 0:
-                conn.rollback()
-                context.abort(
-                    grpc.StatusCode.FAILED_PRECONDITION,
-                    "El bloque ya tiene todos sus cupos libres"
+            id_reserva = request.id_reserva
+            ya_liberado = False
+
+            # Registrar la liberación de forma idempotente por id_reserva.
+            # Si el id_reserva ya está registrado, esta reserva ya liberó
+            # su cupo antes: no se vuelve a sumar.
+            try:
+                conn.execute(
+                    """INSERT INTO liberaciones_cupos (id_reserva, id_bloque)
+                       VALUES (?, ?)""",
+                    (id_reserva, request.id_bloque),
                 )
+            except sqlite3.IntegrityError:
+                ya_liberado = True
+                conn.rollback()
+
+            if not ya_liberado:
+                cur = conn.execute(
+                    """UPDATE bloques_horarios
+                       SET cupos_libres = cupos_libres + 1
+                       WHERE id_bloque = ? AND cupos_libres < cupos_totales""",
+                    (request.id_bloque,),
+                )
+                if cur.rowcount == 0:
+                    # No queda espacio para liberar (bloque ya lleno).
+                    # Deshacemos el registro de liberación para permitir reintentos.
+                    conn.execute(
+                        "DELETE FROM liberaciones_cupos WHERE id_reserva = ?",
+                        (id_reserva,),
+                    )
+                    conn.rollback()
+                    context.abort(
+                        grpc.StatusCode.FAILED_PRECONDITION,
+                        "El bloque ya tiene todos sus cupos libres"
+                    )
             conn.commit()
         finally:
             conn.close()
 
-        return agenda_pb2.LiberarCupoResponse(exito=True, mensaje="Cupo liberado")
+        return agenda_pb2.LiberarCupoResponse(
+            exito=True,
+            mensaje=(
+                "Cupo liberado" if not ya_liberado
+                else "La reserva ya había liberado su cupo"
+            ),
+            ya_liberado=ya_liberado,
+        )
 
 
 def serve():

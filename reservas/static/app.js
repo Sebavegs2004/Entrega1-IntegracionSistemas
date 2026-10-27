@@ -3,8 +3,10 @@
    Consume la API REST de Reservas (/v1) con fetch.
    ============================================================ */
 
-// Misma clave que define el servidor (API_KEY en app.py).
-const API_KEY = "clave-secreta-vet-2026";
+// API Key de escritura. Configúrala antes de usar la interfaz (ver README).
+// El navegador no lee variables de entorno del servidor, por lo que este
+// valor debe definirse manualmente en este archivo o solicitarse al usuario.
+const API_KEY = "";
 const $ = (sel) => document.querySelector(sel);
 
 // Estado de la aplicación (todo se vuelve a cargar desde la API)

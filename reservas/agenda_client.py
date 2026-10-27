@@ -113,8 +113,18 @@ def reservar_cupo(id_bloque):
     }
 
 
-def liberar_cupo(id_bloque):
-    """Solicita a Agenda liberar un cupo (se usa al cancelar una reserva)."""
+def liberar_cupo(id_bloque, id_reserva=None):
+    """Solicita a Agenda liberar un cupo (se usa al cancelar una reserva).
+
+    id_reserva permite a Agenda saber qué reserva libera el cupo y
+    hacerlo de forma idempotente (una reserva solo libera una vez).
+    """
     respuesta = _invocar(_STUB.LiberarCupo,
-                         agenda_pb2.LiberarCupoRequest(id_bloque=id_bloque))
-    return {"exito": respuesta.exito, "mensaje": respuesta.mensaje}
+                         agenda_pb2.LiberarCupoRequest(
+                             id_bloque=id_bloque,
+                             id_reserva=id_reserva or 0))
+    return {
+        "exito": respuesta.exito,
+        "mensaje": respuesta.mensaje,
+        "ya_liberado": respuesta.ya_liberado,
+    }

@@ -27,3 +27,13 @@ CREATE TABLE IF NOT EXISTS bloques_horarios (
     cupos_libres   INTEGER NOT NULL,
     FOREIGN KEY (id_veterinario) REFERENCES veterinarios (id_veterinario)
 );
+
+-- Registro de liberaciones de cupo, claveado por id_reserva.
+-- Permite que LiberarCupo sea idempotente: una misma reserva solo
+-- libera su cupo una vez, aunque se llame dos veces concurrentemente.
+CREATE TABLE IF NOT EXISTS liberaciones_cupos (
+    id_reserva    INTEGER PRIMARY KEY,   -- id de la reserva (de Reservas)
+    id_bloque     INTEGER NOT NULL,      -- bloque al que pertenece
+    liberado_en   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_bloque) REFERENCES bloques_horarios (id_bloque)
+);
