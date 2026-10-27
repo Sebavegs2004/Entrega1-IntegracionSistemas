@@ -10,6 +10,34 @@ contenedor**, pero no es una base de datos: es una caché en memoria
 que se puede borrar sin perder nada (ver *Idempotencia y caché* más
 abajo).
 
+## Configuración previa
+
+Antes de levantar el sistema, define las claves de API. Por seguridad,
+ninguna clave secreta está escrita en el repositorio.
+
+1. Copia el archivo de ejemplo y ajusta los valores:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Edita `.env` y pon tus propias claves:
+
+   ```env
+   API_KEY=tu-clave-de-escritura
+   API_KEY_LECTURA=tu-clave-de-lectura
+   ```
+
+2. Edita `reservas/static/app.js` y pon tu clave de escritura, ya que
+   el navegador no lee variables de entorno del servidor:
+
+   ```javascript
+   const API_KEY = "tu-clave-de-escritura";
+   ```
+
+> ⚠️ Nunca subas el archivo `.env` con claves reales al repositorio. Está
+> incluido en `.gitignore` para evitarlo.
+
 ## Cómo levantar todo
 
 ```bash
