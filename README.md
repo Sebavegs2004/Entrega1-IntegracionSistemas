@@ -95,6 +95,21 @@ Puede probar los endpoints desde Swagger UI, use el botón **Authorize**
 y envía la header `X-API-Key` con la clave definida en la variable de
 entorno `API_KEY` (ver archivo `.env.example`).
 
+## Segundo cliente gRPC (.NET)
+
+También hay un cliente gRPC escrito en **C# (.NET 8)** que consume el
+mismo servidor Agenda a través del mismo contrato
+(`contracts/agenda.proto`). Sirve para demostrar que otro lenguaje puede
+conectar al servicio sin problemas.
+
+```bash
+docker compose --profile cliente run --rm cliente-dotnet
+```
+
+Este comando construye la imagen del cliente .NET, lo ejecuta dentro de
+la red de Docker (donde Agenda está accesible) y lo destruye al terminar.
+No requiere tener .NET instalado en tu máquina.
+
 ## Estructura
 
 ```

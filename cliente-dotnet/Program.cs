@@ -103,10 +103,13 @@ catch (RpcException e)
 // ----------------------------------- 3. CICLO COMPLETO: RESERVAR + LIBERAR
 Titulo("3 · ReservarCupo + LiberarCupo — escritura interoperable");
 
-var bloqueElegido = respuesta.Bloques.FirstOrDefault(b => b.CuposLibres > 0);
+// Elegir un bloque FUTURO con cupos libres (evitar fechas pasadas del seed).
+var hoy = DateTime.UtcNow.ToString("yyyy-MM-dd");
+var bloqueElegido = respuesta.Bloques.FirstOrDefault(
+    b => b.CuposLibres > 0 && string.Compare(b.Fecha, hoy) >= 0);
 if (bloqueElegido is null)
 {
-    Console.WriteLine("   No hay bloques con cupos libres para demostrar la escritura.");
+    Console.WriteLine("   No hay bloques futuros con cupos libres para demostrar la escritura.");
 }
 else
 {
