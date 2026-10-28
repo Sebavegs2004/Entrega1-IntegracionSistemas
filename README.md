@@ -110,6 +110,35 @@ Este comando construye la imagen del cliente .NET, lo ejecuta dentro de
 la red de Docker (donde Agenda está accesible) y lo destruye al terminar.
 No requiere tener .NET instalado en tu máquina.
 
+## Pruebas de contrato
+
+Existe una suite de pruebas automatizadas que valida que la implementación
+cumple los contratos definidos en `contracts/openapi.yaml` y
+`contracts/agenda.proto`. Corre dentro de la red de Docker contra los
+servicios levantados.
+
+```bash
+docker compose up --build tests
+```
+
+Esto construye la imagen de pruebas (`tests/Dockerfile`), levanta los
+servicios necesarios (`agenda`, `reservas`, `redis_cache`) y ejecuta la
+suite completa con `pytest`. Al terminar, el contenedor de pruebas se
+detiene.
+
+Para correr desde datos limpios:
+
+```bash
+docker compose down -v && docker compose up --build tests
+```
+
+Las pruebas cubren:
+- Que el OpenAPI es válido y todos los endpoints documentados existen en la API.
+- Que los cuerpos de respuesta (éxitos y errores) coinciden con los schemas de la spec.
+- Flujo end-to-end: crear dueño → reservar → verificar cupo en Agenda → cancelar → verificar cupo liberado.
+- Que el gRPC compila y expone los 4 RPC esperados (`ListarBloques`, `ObtenerBloque`, `ReservarCupo`, `LiberarCupo`).
+- Que `ReservarCupo` y `LiberarCupo` responden correctamente (incluidos errores como sin cupos o bloque inexistente).
+
 ## Estructura
 
 ```
